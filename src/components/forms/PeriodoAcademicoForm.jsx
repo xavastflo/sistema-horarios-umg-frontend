@@ -4,41 +4,31 @@ import Button from '../ui/Button'
 /**
  * PeriodoAcademicoForm
  *
- * Formulario de crear y editar períodos académicos.
+ * Formulario de crear/editar períodos académicos (semestres UMG).
  *
- * Cambio de UX (vs versión anterior):
- *   - 'nombre_base'  → <select> con opciones fijas (no texto libre)
- *   - 'anio'         → eliminado del formulario; el backend lo extrae de fecha_inicio
- *   - 'nombre_periodo' se construye en el backend: "{nombre_base} {año de fecha_inicio}"
+ * Terminología actualizada:
+ *   - "Tipo de semestre"      → Semestres Impares (Ene–Jun) | Semestres Pares (Jul–Nov)
+ *   - "Semestre correspondiente" → número de avance 1 a 12
  *
- * El payload enviado al backend:
- *   POST: { nombre_base, numero_periodo, fecha_inicio, fecha_fin,
- *            fecha_limite_edicion_horarios?, estado?, es_vigente? }
- *   PUT:  mismos campos, todos opcionales
+ * Lógica de ciclos del pensum (informativa, aplicada en el algoritmo de generación):
+ *   Semestres Impares  → activa ciclos IMPARES  (1, 3, 5, 7, 9, 11)
+ *   Semestres Pares → activa ciclos PARES    (2, 4, 6, 8, 10, 12)
  *
- * Props:
- *   inicial    {object}    Valores iniciales para edición
- *   onGuardar  {function}  (datos) => Promise
- *   onCancelar {function}
- *   errores422 {object}    Mapa campo → [mensajes]
+ * Payload enviado al backend:
+ *   { nombre_base, numero_periodo, fecha_inicio, fecha_fin,
+ *     fecha_limite_edicion_horarios?, estado? }
+ *   (anio se deriva en el backend desde fecha_inicio)
  */
 
-/** Opciones estandarizadas para la UMG — deben coincidir con NOMBRES_BASE del backend */
-const NOMBRES_BASE = [
-  'Primer Semestre',
-  'Segundo Semestre',
-  'Escuela de Vacaciones',
+const TIPOS_SEMESTRE = [
+  { value: 'Semestres Impares',  label: 'Semestres Impares',  rango: 'Enero – Junio',    ciclos: 'impares (1, 3, 5…)' },
+  { value: 'Semestres Pares', label: 'Semestres Pares', rango: 'Julio – Noviembre', ciclos: 'pares (2, 4, 6…)' },
 ]
 
-/**
- * Extrae el prefijo del nombre existente para preseleccionar en edición.
- * "Primer Semestre 2024" → "Primer Semestre"
- */
 function extraerNombreBase(nombreCompleto) {
   if (!nombreCompleto) return ''
-  // Quita el año al final si existe
   const sinAnio = nombreCompleto.replace(/\s+\d{4}$/, '').trim()
-  return NOMBRES_BASE.includes(sinAnio) ? sinAnio : ''
+  return TIPOS_SEMESTRE.some(t => t.value === sinAnio) ? sinAnio : ''
 }
 
 export default function PeriodoAcademicoForm({
@@ -75,7 +65,7 @@ export default function PeriodoAcademicoForm({
     setForm(f => ({ ...f, [name]: value }))
   }
 
-  /** Vista previa del nombre que generará el backend */
+  // Vista previa del nombre que construirá el backend
   const anioPreview = form.fecha_inicio
     ? new Date(form.fecha_inicio + 'T00:00:00').getFullYear()
     : null
@@ -83,29 +73,28 @@ export default function PeriodoAcademicoForm({
     ? `${form.nombre_base} ${anioPreview}`
     : (form.nombre_base || '—')
 
+  // Tipo seleccionado (para mostrar el hint de ciclos)
+  const tipoSel = TIPOS_SEMESTRE.find(t => t.value === form.nombre_base)
+
   async function onSubmit(e) {
     e.preventDefault()
     setGuardando(true)
-    const payload = {
+    await onGuardar({
       nombre_base:    form.nombre_base,
       numero_periodo: Number(form.numero_periodo),
       fecha_inicio:   form.fecha_inicio,
       fecha_fin:      form.fecha_fin,
       estado:         form.estado,
-      // anio NO se envía — el backend lo extrae de fecha_inicio
-      ...(form.fecha_limite_edicion_horarios
-        ? { fecha_limite_edicion_horarios: form.fecha_limite_edicion_horarios }
-        : { fecha_limite_edicion_horarios: null }),
-    }
-    await onGuardar(payload)
+      fecha_limite_edicion_horarios: form.fecha_limite_edicion_horarios || null,
+    })
     setGuardando(false)
   }
 
-  const campo = (id, label, requerido, children, hint = null) => (
+  const campo = (id, label, req, children, hint = null) => (
     <div style={es.campo}>
       <label style={es.label} htmlFor={id}>
         {label}
-        {requerido
+        {req
           ? <span style={es.req}> *</span>
           : <span style={es.opc}> (opcional)</span>}
       </label>
@@ -118,57 +107,61 @@ export default function PeriodoAcademicoForm({
   return (
     <form onSubmit={onSubmit} noValidate style={es.form}>
 
-      {/* Tipo de período — select estandarizado */}
-      {campo('nombre_base', 'Tipo de período', true, null)}
-      <div style={es.campoCompuesto}>
+      {/* ── Tipo de semestre ────────────────────────────────── */}
+      <div style={es.campo}>
+        <label style={es.label} htmlFor="nombre_base">
+          Tipo de semestre <span style={es.req}>*</span>
+        </label>
         <select
           id="nombre_base" name="nombre_base"
-          value={form.nombre_base} onChange={onChange}
-          disabled={guardando}
+          value={form.nombre_base} onChange={onChange} disabled={guardando}
           style={{ ...es.input, ...(errores422.nombre_base ? es.inputErr : {}) }}
         >
-          <option value="">— Selecciona el tipo de período —</option>
-          {NOMBRES_BASE.map(n => (
-            <option key={n} value={n}>{n}</option>
+          <option value="">— Selecciona el tipo de semestre —</option>
+          {TIPOS_SEMESTRE.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
+        {tipoSel && (
+          <span style={es.hint}>
+            Activa los ciclos <strong>{tipoSel.ciclos}</strong> del pensum en la generación de horarios.
+          </span>
+        )}
         {errores422.nombre_base && (
           <span style={es.errorMsg}>{errores422.nombre_base[0]}</span>
         )}
-
-        {/* Vista previa del nombre que se guardará */}
-        <div style={es.preview}>
-          <span style={es.previewLabel}>Nombre que se guardará:</span>
-          <span style={{
-            ...es.previewValor,
-            color: (form.nombre_base && anioPreview)
-              ? 'var(--color-primary)'
-              : 'var(--color-text-muted)',
-          }}>
-            {nombrePreview}
-          </span>
-          {form.nombre_base && !anioPreview && (
-            <span style={es.previewHint}>← ingresa la fecha de inicio para ver el año</span>
-          )}
-        </div>
       </div>
 
-      {/* Número de período */}
-      {campo('numero_periodo', 'N.° de período', true,
+      {/* Vista previa del nombre que guardará el backend */}
+      <div style={es.preview}>
+        <span style={es.previewLabel}>Nombre que se guardará:</span>
+        <span style={{
+          ...es.previewValor,
+          color: (form.nombre_base && anioPreview) ? 'var(--color-primary)' : 'var(--color-text-muted)',
+        }}>
+          {nombrePreview}
+        </span>
+        {form.nombre_base && !anioPreview && (
+          <span style={es.previewHint}>← ingresa la fecha de inicio para ver el año</span>
+        )}
+      </div>
+
+      {/* ── Semestre correspondiente (1–12) ─────────────────── */}
+      {campo('numero_periodo', 'Semestre correspondiente', true,
         <select
           id="numero_periodo" name="numero_periodo"
-          value={form.numero_periodo} onChange={onChange}
-          disabled={guardando}
+          value={form.numero_periodo} onChange={onChange} disabled={guardando}
           style={{ ...es.input, ...(errores422.numero_periodo ? es.inputErr : {}) }}
         >
-          <option value="">—</option>
-          {[1,2,3,4,5,6,7,8,9].map(n => (
-            <option key={n} value={n}>Período {n}</option>
+          <option value="">— Selecciona el semestre —</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+            <option key={n} value={n}>Semestre {n}</option>
           ))}
-        </select>
+        </select>,
+        'Nivel de avance académico de la carrera (1 a 12 semestres).'
       )}
 
-      {/* Fechas inicio / fin */}
+      {/* ── Fechas ──────────────────────────────────────────── */}
       <div style={es.fila2}>
         {campo('fecha_inicio', 'Fecha de inicio', true,
           <input
@@ -176,7 +169,7 @@ export default function PeriodoAcademicoForm({
             value={form.fecha_inicio} onChange={onChange} disabled={guardando}
             style={{ ...es.input, ...(errores422.fecha_inicio ? es.inputErr : {}) }}
           />,
-          'El año se extrae automáticamente de esta fecha.'
+          'El año del semestre se extrae automáticamente de esta fecha.'
         )}
         {campo('fecha_fin', 'Fecha de fin', true,
           <input
@@ -187,7 +180,7 @@ export default function PeriodoAcademicoForm({
         )}
       </div>
 
-      {/* Fecha límite edición de horarios */}
+      {/* ── Fecha límite de edición ──────────────────────────── */}
       {campo('fecha_limite_edicion_horarios', 'Fecha límite edición de horarios', false,
         <input
           id="fecha_limite_edicion_horarios" name="fecha_limite_edicion_horarios"
@@ -195,10 +188,10 @@ export default function PeriodoAcademicoForm({
           onChange={onChange} disabled={guardando}
           style={{ ...es.input, ...(errores422.fecha_limite_edicion_horarios ? es.inputErr : {}) }}
         />,
-        'Después de esta fecha no se podrán editar los horarios del período.'
+        'Después de esta fecha no se podrán modificar los horarios del semestre.'
       )}
 
-      {/* Estado */}
+      {/* ── Estado ──────────────────────────────────────────── */}
       {campo('estado', 'Estado', true,
         <select
           id="estado" name="estado"
@@ -217,7 +210,7 @@ export default function PeriodoAcademicoForm({
           Cancelar
         </Button>
         <Button variante="primary" type="submit" cargando={guardando}>
-          {esEdicion ? 'Guardar cambios' : 'Crear período'}
+          {esEdicion ? 'Guardar cambios' : 'Crear semestre'}
         </Button>
       </div>
     </form>
@@ -225,31 +218,30 @@ export default function PeriodoAcademicoForm({
 }
 
 const es = {
-  form:          { display: 'flex', flexDirection: 'column', gap: '16px' },
-  fila2:         { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
-  campo:         { display: 'flex', flexDirection: 'column', gap: '5px' },
-  campoCompuesto:{ display: 'flex', flexDirection: 'column', gap: '8px' },
-  label:         { fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)' },
-  req:           { color: 'var(--color-error)' },
-  opc:           { fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '12px' },
-  hint:          { fontSize: '11.5px', color: 'var(--color-text-muted)' },
+  form:   { display: 'flex', flexDirection: 'column', gap: '16px' },
+  fila2:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
+  campo:  { display: 'flex', flexDirection: 'column', gap: '5px' },
+  label:  { fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)' },
+  req:    { color: 'var(--color-error)' },
+  opc:    { fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '12px' },
+  hint:   { fontSize: '11.5px', color: 'var(--color-text-muted)', lineHeight: 1.4 },
   input: {
     padding: '9px 12px', border: '1.5px solid var(--color-border)',
     borderRadius: 'var(--radius-md)', fontSize: '14px', color: 'var(--color-text)',
     background: 'var(--color-surface)', fontFamily: 'var(--font-sans)',
     outline: 'none', width: '100%', transition: 'border-color .15s',
   },
-  inputErr:    { borderColor: 'var(--color-error)', background: '#fff8f8' },
-  errorMsg:    { fontSize: '12px', color: 'var(--color-error)', fontWeight: 500 },
+  inputErr: { borderColor: 'var(--color-error)', background: '#fff8f8' },
+  errorMsg: { fontSize: '12px', color: 'var(--color-error)', fontWeight: 500 },
   preview: {
     display: 'flex', alignItems: 'center', gap: '8px',
     padding: '8px 12px', background: 'var(--color-bg)',
     border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-    flexWrap: 'wrap',
+    flexWrap: 'wrap', marginTop: '-8px',
   },
-  previewLabel:{ fontSize: '12px', color: 'var(--color-text-muted)', flexShrink: 0 },
-  previewValor:{ fontSize: '13.5px', fontWeight: 700 },
-  previewHint: { fontSize: '11.5px', color: 'var(--color-text-muted)', fontStyle: 'italic' },
+  previewLabel: { fontSize: '12px', color: 'var(--color-text-muted)', flexShrink: 0 },
+  previewValor: { fontSize: '13.5px', fontWeight: 700 },
+  previewHint:  { fontSize: '11.5px', color: 'var(--color-text-muted)', fontStyle: 'italic' },
   acciones: {
     display: 'flex', justifyContent: 'flex-end', gap: '8px',
     paddingTop: '4px', borderTop: '1px solid var(--color-border)', marginTop: '4px',

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import PageHeader   from '../../components/ui/PageHeader'
-import Card         from '../../components/ui/Card'
+import PageHeader        from '../../components/ui/PageHeader'
+import CargaPensumMasiva from '../../components/forms/CargaPensumMasiva'
+import Card              from '../../components/ui/Card'
 import Button       from '../../components/ui/Button'
 import Badge        from '../../components/ui/Badge'
 import EmptyState   from '../../components/ui/EmptyState'
@@ -29,6 +30,29 @@ import { getPeriodos }  from '../../api/periodosAcademicos'
  *   GET    /carreras?estado=activo
  *   GET    /periodos-academicos?estado=activo
  */
+/**
+ * Convierte el nombre_periodo largo en una etiqueta corta para la tabla.
+ * 'Semestres Impares 2026' → { texto: 'Impares · 2026', variante: 'info' }
+ * 'Semestres Pares 2026'   → { texto: 'Pares · 2026',   variante: 'warning' }
+ */
+function etiquetaPeriodo(nombrePeriodo) {
+  if (!nombrePeriodo) return { texto: '—', variante: 'neutral' }
+  const match = nombrePeriodo.match(/^(Semestres (Impares|Pares))\s+(\d{4})$/)
+  if (match) {
+    const tipo = match[2]  // 'Impares' | 'Pares'
+    const anio = match[3]
+    return {
+      texto:    `${tipo} · ${anio}`,
+      variante: tipo === 'Impares' ? 'info' : 'warning',
+    }
+  }
+  // Fallback para otros formatos: recortar a 22 chars
+  return {
+    texto:    nombrePeriodo.length > 22 ? nombrePeriodo.slice(0, 20) + '…' : nombrePeriodo,
+    variante: 'neutral',
+  }
+}
+
 export default function Pensum() {
   // ── Datos principales ──────────────────────────────────────
   const [pensums,    setPensums]    = useState([])
@@ -47,7 +71,9 @@ export default function Pensum() {
   const [filtroPeriodo, setFiltroPeriodo] = useState('')
 
   // ── Formulario ─────────────────────────────────────────────
-  const [mostrarForm, setMostrarForm] = useState(false)
+  const [mostrarForm,    setMostrarForm]    = useState(false)
+  const [mostrarCargaMasiva, setMostrarCargaMasiva] = useState(false)
+  const [pensumSeleccionado, setPensumSeleccionado] = useState(null)
   const [editando,    setEditando]    = useState(null)
   const [errores422,  setErrores422]  = useState({})
   const [errorForm,   setErrorForm]   = useState(null)
@@ -164,6 +190,18 @@ export default function Pensum() {
       />
 
       {/* Formulario */}
+      {/* Botón de carga masiva por fila de pensum */}
+      {mostrarCargaMasiva && pensumSeleccionado && (
+        <div style={{ marginBottom: '20px' }}>
+          <CargaPensumMasiva
+            idPensum={pensumSeleccionado.id_pensum}
+            nombrePensum={pensumSeleccionado.nombre_pensum}
+            onExito={() => { cargar(); setMostrarCargaMasiva(false); setPensumSeleccionado(null) }}
+            onCerrar={() => { setMostrarCargaMasiva(false); setPensumSeleccionado(null) }}
+          />
+        </div>
+      )}
+
       {mostrarForm && (
         <Card style={{ marginBottom: '20px' }}>
           <div style={est.formHeader}>
@@ -254,10 +292,10 @@ export default function Pensum() {
                       {p.carrera?.nombre_carrera ?? '—'}
                     </td>
                     <td style={est.td}>
-                      <div style={est.periodo}>{p.periodo_academico?.nombre_periodo ?? '—'}</div>
-                      {p.periodo_academico && (
-                        <div style={est.anio}>{p.periodo_academico.anio}</div>
-                      )}
+                      {(() => {
+                        const ep = etiquetaPeriodo(p.periodo_academico?.nombre_periodo)
+                        return <Badge texto={ep.texto} variante={ep.variante} />
+                      })()}
                     </td>
                     <td style={est.td}>
                       <Badge
@@ -268,6 +306,14 @@ export default function Pensum() {
                     </td>
                     <td style={{ ...est.td, textAlign: 'right' }}>
                       <div style={est.acciones}>
+                        <Button
+                          variante="ghost" size="sm"
+                          title="Importar cursos desde CSV"
+                          onClick={() => { setPensumSeleccionado(p); setMostrarCargaMasiva(true); setMostrarForm(false) }}
+                          disabled={eliminando === p.id_pensum}
+                        >
+                          ↑ CSV
+                        </Button>
                         <Button
                           variante="ghost" size="sm"
                           onClick={() => abrirEditar(p)}
