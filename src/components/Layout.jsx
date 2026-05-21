@@ -33,6 +33,7 @@ const MENU_POR_ROL = {
   administrador: [
     { label: 'Dashboard',           path: '/admin/dashboard',  Icono: IconDashboard  },
     { label: 'Gestión académica',   path: '/pendiente',        Icono: IconAcademico,  modulo: 'Gestión académica'  },
+    { label: 'Sedes',               path: '/admin/centros-educativos', Icono: IconAcademico                        },
     { label: 'Facultades',          path: '/admin/facultades', Icono: IconAcademico                                },
     { label: 'Carreras',            path: '/admin/carreras',   Icono: IconCarreras                                 },
     { label: 'Jornadas por carrera',path: '/admin/carrera-jornadas', Icono: IconDisponib                           },

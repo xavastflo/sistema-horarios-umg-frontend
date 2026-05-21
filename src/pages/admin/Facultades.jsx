@@ -228,6 +228,11 @@ export default function Facultades() {
                   <tr key={f.id_facultad} style={estilos.tr}>
                     <td style={estilos.td}>
                       <div style={estilos.nombreFacultad}>{f.nombre_facultad}</div>
+                      {f.centro_educativo && (
+                        <div style={estilos.descripcionFacultad}>
+                          🏛 {f.centro_educativo.nombre}
+                        </div>
+                      )}
                       {f.descripcion && (
                         <div style={estilos.descripcionFacultad}>{f.descripcion}</div>
                       )}

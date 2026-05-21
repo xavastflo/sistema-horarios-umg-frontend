@@ -11,7 +11,8 @@ import {
   EstudianteDashboard,
 } from './pages/dashboards/Dashboards'
 import ModuloPendiente from './pages/ModuloPendiente'
-import Facultades      from './pages/admin/Facultades'
+import CentrosEducativos from './pages/admin/CentrosEducativos'
+import Facultades        from './pages/admin/Facultades'
 import Carreras        from './pages/admin/Carreras'
 import CarreraJornadas  from './pages/admin/CarreraJornadas'
 import BloquesHorarios    from './pages/admin/BloquesHorarios'
@@ -68,6 +69,14 @@ export default function App() {
           />
 
           {/* Módulos de administrador */}
+          <Route
+            path="admin/centros-educativos"
+            element={
+              <ProtectedRoute rolesPermitidos={['administrador']}>
+                <CentrosEducativos />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="admin/facultades"
             element={
