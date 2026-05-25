@@ -39,6 +39,7 @@ export default function SeccionForm({
   })
   const [guardando,       setGuardando]       = useState(false)
   const [jornadasCarrera, setJornadasCarrera] = useState([])
+  const [cursosFiltrados, setCursosFiltrados] = useState([])
   const [cargandoJorn,    setCargandoJorn]    = useState(false)
 
   // Reset al montar
@@ -46,15 +47,45 @@ export default function SeccionForm({
     setForm({ id_carrera: '', id_carrera_jornada: '', id_curso: '', id_periodo_academico: '', numero_seccion: '' })
   }, []) // eslint-disable-line
 
-  // Cargar jornadas cuando cambia la carrera
+  // Al cambiar carrera: cargar jornadas Y cursos del pensum de esa carrera
   useEffect(() => {
-    if (!form.id_carrera) { setJornadasCarrera([]); return }
+    if (!form.id_carrera) {
+      setJornadasCarrera([])
+      setCursosFiltrados([])
+      return
+    }
     setCargandoJorn(true)
-    api.get(`/carreras/${form.id_carrera}`)
-      .then(r => setJornadasCarrera(r.data.jornadas_activas ?? []))
-      .catch(() => setJornadasCarrera([]))
+    Promise.all([
+      api.get(`/carreras/${form.id_carrera}`),
+      api.get('/pensums', { params: { id_carrera: form.id_carrera, estado: 'activo' } }),
+    ])
+      .then(([rCarrera, rPensums]) => {
+        setJornadasCarrera(rCarrera.data.jornadas_activas ?? [])
+        // Extraer IDs únicos de cursos de todos los pensums de la carrera
+        const pensums  = Array.isArray(rPensums.data) ? rPensums.data : []
+        const idPensums = pensums.map(p => p.id_pensum)
+        if (idPensums.length === 0) { setCursosFiltrados(cursos); return }
+        // Cargar cursos de todos los pensums en paralelo
+        Promise.all(idPensums.map(id => api.get(`/pensums/${id}/cursos`)))
+          .then(responses => {
+            const idsCursos = new Set(
+              responses.flatMap(r =>
+                (Array.isArray(r.data) ? r.data : (r.data?.cursos ?? []))
+                .map(pc => pc.id_curso ?? pc.curso?.id_curso)
+                .filter(Boolean)
+              )
+            )
+            setCursosFiltrados(
+              idsCursos.size > 0
+                ? cursos.filter(c => idsCursos.has(c.id_curso))
+                : cursos
+            )
+          })
+          .catch(() => setCursosFiltrados(cursos))
+      })
+      .catch(() => { setJornadasCarrera([]); setCursosFiltrados(cursos) })
       .finally(() => setCargandoJorn(false))
-  }, [form.id_carrera])
+  }, [form.id_carrera]) // eslint-disable-line
 
   function onChange(e) {
     const { name, value } = e.target
@@ -140,11 +171,13 @@ export default function SeccionForm({
         <select
           id="id_curso" name="id_curso"
           value={form.id_curso} onChange={onChange}
-          disabled={guardando}
+          disabled={guardando || !form.id_carrera}
           style={{ ...es.input, ...(errores422.id_curso ? es.inputErr : {}) }}
         >
-          <option value="">— Selecciona un curso —</option>
-          {cursos.map(c => (
+          <option value="">
+            {!form.id_carrera ? '— Selecciona primero una carrera —' : '— Selecciona un curso —'}
+          </option>
+          {cursosFiltrados.map(c => (
             <option key={c.id_curso} value={c.id_curso}>
               [{c.codigo_curso}] {c.nombre_curso}
             </option>
@@ -209,7 +242,13 @@ export default function SeccionForm({
         </Button>
         <Button
           variante="primary" type="submit" cargando={guardando}
-          disabled={!form.id_carrera_jornada || guardando}
+          disabled={
+            !form.id_carrera_jornada ||
+            !form.id_curso           ||
+            !form.id_periodo_academico ||
+            !form.numero_seccion.trim() ||
+            guardando
+          }
         >
           Crear sección
         </Button>

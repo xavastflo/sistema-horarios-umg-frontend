@@ -8,7 +8,6 @@ import LoadingState from '../../components/ui/LoadingState'
 import ErrorState   from '../../components/ui/ErrorState'
 import SeccionForm  from '../../components/forms/SeccionForm'
 import { getSecciones, crearSeccion, eliminarSeccion } from '../../api/secciones'
-import { getJornadas } from '../../api/carreraJornadas'
 import { getCursos }    from '../../api/cursos'
 import { getCarreras }  from '../../api/carreras'
 import { getPeriodos }  from '../../api/periodosAcademicos'
@@ -51,7 +50,6 @@ export default function Secciones() {
   const [filtroPeriodo, setFiltroPeriodo] = useState('')
 
   // ── Selector de jornada (filtro maestro superior) ─────────
-  const [jornadas,      setJornadas]      = useState([])
   const [idCarreraJornada, setIdCarreraJornada] = useState('')  // '' = todas
 
   // ── Formulario ─────────────────────────────────────────────
@@ -93,10 +91,9 @@ export default function Secciones() {
       setCargandoCat(true)
       setErrorCat(null)
       try {
-        const [dataCursos, dataPeriodos, dataJornadas, dataCarreras] = await Promise.all([
+        const [dataCursos, dataPeriodos, dataCarreras] = await Promise.all([
           getCursos({ estado: 'activo' }),
           getPeriodos(),
-          getJornadas(),
           getCarreras({ estado: 'activo' }),
         ])
         setCursos(dataCursos)
@@ -107,7 +104,6 @@ export default function Secciones() {
           return (b.anio ?? 0) - (a.anio ?? 0)
         })
         setPeriodos(dataPeriodos)
-        setJornadas(dataJornadas ?? [])
         setCarreras(dataCarreras ?? [])
       } catch {
         setErrorCat('Error al cargar catálogos.')
