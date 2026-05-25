@@ -12,41 +12,41 @@ import {
   crearCarrera,
   actualizarCarrera,
   eliminarCarrera,
+  asignarCoordinador,
+  desasignarCoordinador,
 } from '../../api/carreras'
 import { getFacultades } from '../../api/facultades'
+import { getUsuarios } from '../../api/usuarios'
 
-/**
- * Carreras — módulo CRUD para administrador.
- * Consume: GET, POST, PUT, DELETE /api/carreras
- * Consume: GET /api/facultades (para el select del formulario)
- */
 export default function Carreras() {
-  // ── Datos principales ──────────────────────────────────────
   const [carreras,   setCarreras]   = useState([])
   const [cargando,   setCargando]   = useState(true)
   const [error,      setError]      = useState(null)
 
-  // ── Facultades para el select ──────────────────────────────
   const [facultades,      setFacultades]      = useState([])
   const [cargandoFacs,    setCargandoFacs]    = useState(false)
   const [errorFacultades, setErrorFacultades] = useState(null)
 
-  // ── Filtros ────────────────────────────────────────────────
   const [buscar,       setBuscar]       = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroFac,    setFiltroFac]    = useState('')
 
-  // ── Formulario ─────────────────────────────────────────────
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando,    setEditando]    = useState(null)
   const [errores422,  setErrores422]  = useState({})
   const [errorForm,   setErrorForm]   = useState(null)
 
-  // ── Eliminación ────────────────────────────────────────────
   const [eliminando,  setEliminando]  = useState(null)
   const [errorElim,   setErrorElim]   = useState(null)
 
-  // ── Cargar carreras ────────────────────────────────────────
+  // ── Estados para el Modal de Coordinador ─────────────────────
+  const [modalCoord, setModalCoord] = useState(null) // Guardará el objeto de la carrera
+  const [coordinadores, setCoordinadores] = useState([])
+  const [idUsuarioCoord, setIdUsuarioCoord] = useState('')
+  const [cargandoCoords, setCargandoCoords] = useState(false)
+  const [errorModalCoord, setErrorModalCoord] = useState(null)
+  const [guardandoCoord, setGuardandoCoord] = useState(false)
+
   const cargar = useCallback(async () => {
     setCargando(true)
     setError(null)
@@ -70,11 +70,8 @@ export default function Carreras() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  // ── Cargar facultades activas ────────────────────────────
-  // Se carga al montar el componente para poblar tanto el filtro
-  // por facultad como el select del formulario de crear/editar.
   const cargarFacultades = useCallback(async () => {
-    if (facultades.length > 0) return // ya cargadas — evita doble fetch
+    if (facultades.length > 0) return
     setCargandoFacs(true)
     setErrorFacultades(null)
     try {
@@ -87,10 +84,8 @@ export default function Carreras() {
     }
   }, [facultades.length])
 
-  // Cargar facultades al entrar a la pantalla (no solo al abrir el form)
   useEffect(() => { cargarFacultades() }, [cargarFacultades])
 
-  // ── Abrir/cerrar formulario ────────────────────────────────
   async function abrirCrear() {
     setEditando(null)
     setErrores422({})
@@ -114,7 +109,62 @@ export default function Carreras() {
     setErrorForm(null)
   }
 
-  // ── Guardar ────────────────────────────────────────────────
+  // ── Handlers de Coordinador ──────────────────────────────────
+  async function abrirModalCoordinador(carrera) {
+    setModalCoord(carrera)
+    setIdUsuarioCoord(carrera.id_usuario_coordinador ?? '')
+    setErrorModalCoord(null)
+    setCargandoCoords(true)
+    try {
+      const todos = await getUsuarios({ estado: 'activo' })
+      const lista = (Array.isArray(todos) ? todos : (todos.data ?? [])).filter(u => 
+        (u.roles_activos ?? []).some(r => r.nombre_rol === 'coordinador')
+      )
+      setCoordinadores(lista)
+    } catch {
+      setErrorModalCoord('No se pudieron cargar los coordinadores activos.')
+    } finally {
+      setCargandoCoords(false)
+    }
+  }
+
+  function cerrarModalCoordinador() {
+    setModalCoord(null)
+    setCoordinadores([])
+    setIdUsuarioCoord('')
+    setErrorModalCoord(null)
+  }
+
+  async function deGuardarCoordinador(e) {
+    e.preventDefault()
+    if (!idUsuarioCoord) {
+      setErrorModalCoord('Por favor, selecciona un coordinador.')
+      return
+    }
+    setGuardandoCoord(true)
+    setErrorModalCoord(null)
+    try {
+      await asignarCoordinador(modalCoord.id_carrera, Number(idUsuarioCoord))
+      cerrarModalCoordinador()
+      await cargar()
+    } catch (err) {
+      setErrorModalCoord(err.response?.data?.message ?? 'Error al asignar el coordinador.')
+    } finally {
+      setGuardandoCoord(false)
+    }
+  }
+
+  async function onQuitarCoordinador(carrera) {
+    if (!window.confirm(`¿Remover al coordinador de la carrera "${carrera.nombre_carrera}"?`)) return
+    setErrorElim(null)
+    try {
+      await desasignarCoordinador(carrera.id_carrera)
+      await cargar()
+    } catch (err) {
+      setErrorElim(err.response?.data?.message ?? 'No se pudo desasignar al coordinador.')
+    }
+  }
+
   async function onGuardar(datos) {
     setErrores422({})
     setErrorForm(null)
@@ -125,7 +175,7 @@ export default function Carreras() {
         await crearCarrera(datos)
       }
       cerrarForm()
-      await cargar() // refrescar con relaciones y filtros actuales
+      await cargar()
     } catch (err) {
       const status = err.response?.status
       if (status === 422) {
@@ -140,14 +190,13 @@ export default function Carreras() {
     }
   }
 
-  // ── Desactivar ─────────────────────────────────────────────
   async function onEliminar(carrera) {
     if (!window.confirm(`¿Desactivar la carrera "${carrera.nombre_carrera}"?`)) return
     setEliminando(carrera.id_carrera)
     setErrorElim(null)
     try {
       await eliminarCarrera(carrera.id_carrera)
-      await cargar() // refrescar para respetar filtro estado activo/inactivo
+      await cargar()
     } catch (err) {
       setErrorElim(err.response?.data?.message ?? 'No se pudo desactivar la carrera.')
     } finally {
@@ -155,7 +204,6 @@ export default function Carreras() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────
   return (
     <div className="fade-in">
       <PageHeader
@@ -168,7 +216,7 @@ export default function Carreras() {
         }
       />
 
-      {/* Formulario */}
+      {/* Formulario Crear/Editar */}
       {mostrarForm && (
         <Card style={{ marginBottom: '20px' }}>
           <div style={estilos.formHeader}>
@@ -177,7 +225,6 @@ export default function Carreras() {
             </h2>
           </div>
 
-          {/* Error al cargar facultades */}
           {errorFacultades && (
             <div style={estilos.alertaWarn}>{errorFacultades}</div>
           )}
@@ -197,6 +244,56 @@ export default function Carreras() {
             />
           )}
         </Card>
+      )}
+
+      {/* Modal Independiente de Asignación de Coordinador */}
+      {modalCoord && (
+        <div style={estilos.modalOverlay}>
+          <Card style={estilos.modalContenedor}>
+            <div style={estilos.formHeader}>
+              <h2 style={estilos.formTitulo}>Asignar Coordinador: {modalCoord.nombre_carrera}</h2>
+            </div>
+            
+            {errorModalCoord && (
+              <div style={estilos.alertaError} role="alert">{errorModalCoord}</div>
+            )}
+
+            {cargandoCoords ? (
+              <LoadingState texto="Buscando coordinadores activos…" alto="80px" />
+            ) : (
+              <form onSubmit={deGuardarCoordinador} style={estilos.modalForm}>
+                <div style={estilos.campoModal}>
+                  <label style={estilos.labelModal}>Seleccione un usuario con rol de coordinador:</label>
+                  <select
+                    value={idUsuarioCoord}
+                    onChange={e => setIdUsuarioCoord(e.target.value)}
+                    disabled={guardandoCoord}
+                    style={estilos.selectModal}
+                  >
+                    <option value="">— Seleccionar Coordinador —</option>
+                    {coordinadores.map(u => (
+                      <option key={u.id_usuario} value={u.id_usuario}>
+                        {u.nombres} {u.apellidos} ({u.nombre_usuario})
+                      </option>
+                    ))}
+                  </select>
+                  {coordinadores.length === 0 && (
+                    <span style={estilos.infoAviso}>No se encontraron usuarios activos con rol de coordinador.</span>
+                  )}
+                </div>
+
+                <div style={estilos.accionesModal}>
+                  <Button variante="ghost" type="button" onClick={cerrarModalCoordinador} disabled={guardandoCoord}>
+                    Cancelar
+                  </Button>
+                  <Button variante="primary" type="submit" cargando={guardandoCoord}>
+                    Guardar Coordinador
+                  </Button>
+                </div>
+              </form>
+            )}
+          </Card>
+        </div>
       )}
 
       {/* Filtros */}
@@ -319,6 +416,38 @@ export default function Carreras() {
                         >
                           Editar
                         </Button>
+                        
+                        {/* Botones Dinámicos para la gestión del coordinador */}
+                        {c.estado === 'activo' && (
+                          c.coordinador ? (
+                            <>
+                              <Button
+                                variante="ghost"
+                                size="sm"
+                                onClick={() => abrirModalCoordinador(c)}
+                              >
+                                Cambiar coord.
+                              </Button>
+                              <Button
+                                variante="ghost"
+                                size="sm"
+                                onClick={() => onQuitarCoordinador(c)}
+                                style={{ color: '#b91c1c' }}
+                              >
+                                Quitar coord.
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variante="ghost"
+                              size="sm"
+                              onClick={() => abrirModalCoordinador(c)}
+                            >
+                              Asignar coord.
+                            </Button>
+                          )
+                        )}
+
                         {c.estado === 'activo' && (
                           <Button
                             variante="danger"
@@ -342,7 +471,6 @@ export default function Carreras() {
   )
 }
 
-/* ── Estilos ─────────────────────────────────────────────────────── */
 const estilos = {
   formHeader: { marginBottom: '16px' },
   formTitulo: { fontSize: '15px', fontWeight: 700, color: 'var(--color-text)', margin: 0 },
@@ -389,5 +517,30 @@ const estilos = {
   coordinador:  { fontSize: '13px' },
   sinDato:      { color: 'var(--color-text-muted)', fontSize: '12.5px' },
   jornadas:     { display: 'flex', gap: '4px', flexWrap: 'wrap' },
-  acciones:     { display: 'flex', gap: '6px', justifyContent: 'flex-end' },
+  acciones:     { display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' },
+  
+  // Estilos añadidos de forma limpia para el Modal
+  modalOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)', display: 'flex',
+    justifyContent: 'center', alignItems: 'center', zIndex: 1000,
+    backdropFilter: 'blur(2px)'
+  },
+  modalContenedor: {
+    width: '100%', maxWidth: '460px', padding: '20px',
+    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)'
+  },
+  modalForm: { display: 'flex', flexDirection: 'column', gap: '16px' },
+  campoModal: { display: 'flex', flexDirection: 'column', gap: '6px' },
+  labelModal: { fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)' },
+  selectModal: {
+    padding: '9px 12px', border: '1.5px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)', fontSize: '14px', color: 'var(--color-text)',
+    background: 'var(--color-surface)', outline: 'none', width: '100%'
+  },
+  infoAviso: { fontSize: '12px', color: '#b45309', fontWeight: 500, marginTop: '2px' },
+  accionesModal: {
+    display: 'flex', justifyContent: 'flex-end', gap: '8px',
+    borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '4px'
+  }
 }

@@ -45,3 +45,13 @@ export async function eliminarCarrera(id) {
   const response = await api.delete(`/carreras/${id}`)
   return response.data
 }
+
+export async function asignarCoordinador(idCarrera, idUsuario) {
+  const response = await api.post(`/carreras/${idCarrera}/coordinador`, { id_usuario: idUsuario })
+  return response.data
+}
+
+export async function desasignarCoordinador(idCarrera) {
+  const response = await api.delete(`/carreras/${idCarrera}/coordinador`)
+  return response.data
+}
