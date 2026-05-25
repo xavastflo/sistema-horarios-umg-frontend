@@ -25,6 +25,36 @@ import {
  *
  * No existe PUT para bloques: sin edición de bloques existentes.
  */
+// ── Reglas de negocio por jornada ──────────────────────────────────────
+const REGLAS_JORNADA = {
+  'Matutina':      { horaMin: '06:00', horaMax: '18:00',
+                     dias: ['Lunes','Martes','Miércoles','Jueves','Viernes'],
+                     labelHora: '06:00 AM–06:00 PM', labelDias: 'Lunes a Viernes' },
+  'Vespertina':    { horaMin: '18:00', horaMax: '22:00',
+                     dias: ['Lunes','Martes','Miércoles','Jueves','Viernes'],
+                     labelHora: '06:00 PM–10:00 PM', labelDias: 'Lunes a Viernes' },
+  'Fin de Semana': { horaMin: '06:00', horaMax: '18:00',
+                     dias: ['Sábado','Domingo'],
+                     labelHora: '06:00 AM–06:00 PM', labelDias: 'Sábado o Domingo' },
+}
+
+/**
+ * Valida horas y día contra la regla de la jornada.
+ * Retorna array de strings con errores, vacío si todo es correcto.
+ */
+function validarContraJornada(nombreJornada, horaInicio, horaFin, nombreDia) {
+  const regla = REGLAS_JORNADA[nombreJornada]
+  if (!regla) return []   // jornada sin regla definida → permitir
+  const errores = []
+  if (horaInicio && (horaInicio < regla.horaMin || horaInicio >= regla.horaMax))
+    errores.push(`Hora inicio fuera del rango ${nombreJornada}: ${regla.labelHora}.`)
+  if (horaFin && (horaFin <= regla.horaMin || horaFin > regla.horaMax))
+    errores.push(`Hora fin fuera del rango ${nombreJornada}: ${regla.labelHora}.`)
+  if (nombreDia && !regla.dias.includes(nombreDia))
+    errores.push(`Día '${nombreDia}' no permitido en jornada ${nombreJornada}. Días válidos: ${regla.labelDias}.`)
+  return errores
+}
+
 export default function BloquesHorarios() {
   // ── Catálogos ──────────────────────────────────────────────
   const [carreras,     setCarreras]     = useState([])
@@ -41,6 +71,14 @@ export default function BloquesHorarios() {
   // ── Vista de bloques existentes ────────────────────────────
   const [bloquesPorDia,     setBloquesPorDia]     = useState({})
   const [infoCarreraJorn,   setInfoCarreraJorn]   = useState(null)
+
+  // Jornada activa y días permitidos por ella (derivados de jornadasCarrera + idCarreraJornada)
+  const jornadaActiva = jornadasCarrera.find(
+    j => String(j.pivot?.id_carrera_jornada) === String(idCarreraJornada)
+  )
+  const nombreJornada  = jornadaActiva?.nombre_jornada ?? null
+  const reglaJornada   = REGLAS_JORNADA[nombreJornada] ?? null
+  const diasPermitidos = reglaJornada ? reglaJornada.dias : null  // null = sin restricción
   const [cargandoBloques,   setCargandoBloques]   = useState(false)
   const [errorBloques,      setErrorBloques]      = useState(null)
 
@@ -144,7 +182,9 @@ export default function BloquesHorarios() {
   }
 
   // ── Toggle de días para generación ────────────────────────
-  function toggleDia(idDia) {
+  function toggleDia(idDia, nombreDia) {
+    // Bloquear días no permitidos para la jornada activa
+    if (diasPermitidos && !diasPermitidos.includes(nombreDia)) return
     setDiasSelGen(prev =>
       prev.includes(idDia) ? prev.filter(d => d !== idDia) : [...prev, idDia]
     )
@@ -164,6 +204,25 @@ export default function BloquesHorarios() {
   async function onGenerar(e) {
     e.preventDefault()
     if (!idCarreraJornada || diasSelGen.length === 0) return
+    // Validación cruzada frontend antes de enviar al backend
+    const erroresValidacion = []
+    const diasNombres = diasSelGen.map(id => dias.find(d => d.id_dia === id)?.nombre_dia).filter(Boolean)
+    if (reglaJornada) {
+      // Validar horas del rango general
+      const errHora = validarContraJornada(nombreJornada,
+        formGen.hora_inicio_general, formGen.hora_fin_general, null)
+      erroresValidacion.push(...errHora)
+      // Validar cada día seleccionado
+      diasNombres.forEach(nd => {
+        if (!reglaJornada.dias.includes(nd))
+          erroresValidacion.push(`Día '${nd}' no permitido en jornada ${nombreJornada}.`)
+      })
+    }
+    if (erroresValidacion.length > 0) {
+      setErrorGen(erroresValidacion.join(' | '))
+      return
+    }
+
     setGenerando(true)
     setResultadoGen(null)
     setErrorGen(null)
@@ -217,6 +276,17 @@ export default function BloquesHorarios() {
   async function onCrearIndividual(e) {
     e.preventDefault()
     if (!idCarreraJornada) return
+    // Validación cruzada frontend para bloque individual
+    if (reglaJornada) {
+      const nombreDiaInd = dias.find(d => String(d.id_dia) === String(formInd.id_dia))?.nombre_dia
+      const errsInd = validarContraJornada(nombreJornada,
+        formInd.hora_inicio, formInd.hora_fin, nombreDiaInd)
+      if (errsInd.length > 0) {
+        setErrorInd(errsInd.join(' | '))
+        return
+      }
+    }
+
     setCreando(true)
     setErroresInd({})
     setErrorInd(null)
@@ -317,6 +387,15 @@ export default function BloquesHorarios() {
 
                 <form onSubmit={onGenerar} noValidate style={estilos.form}>
 
+                  {/* Banner de regla de jornada */}
+                  {reglaJornada && (
+                    <div style={estilos.reglaBanner}>
+                      <strong>Jornada {nombreJornada}:</strong>
+                      {' '}Horas permitidas: <strong>{reglaJornada.labelHora}</strong>.
+                      {' '}Días válidos: <strong>{reglaJornada.labelDias}</strong>.
+                    </div>
+                  )}
+
                   {/* Días */}
                   <div style={estilos.campo}>
                     <label style={estilos.label}>Días <span style={estilos.req}>*</span></label>
@@ -325,11 +404,13 @@ export default function BloquesHorarios() {
                         <label key={d.id_dia} style={{
                           ...estilos.diaLabel,
                           ...(diasSelGen.includes(d.id_dia) ? estilos.diaActivo : {}),
+                          ...(diasPermitidos && !diasPermitidos.includes(d.nombre_dia)
+                            ? { opacity: .35, cursor: 'not-allowed', pointerEvents: 'none' } : {}),
                         }}>
                           <input
                             type="checkbox"
                             checked={diasSelGen.includes(d.id_dia)}
-                            onChange={() => toggleDia(d.id_dia)}
+                            onChange={() => toggleDia(d.id_dia, d.nombre_dia)}
                             style={{ accentColor: 'var(--color-primary)' }}
                           />
                           <span style={estilos.diaNombre}>{d.nombre_dia}</span>
@@ -346,6 +427,8 @@ export default function BloquesHorarios() {
                         type="time"
                         value={formGen.hora_inicio_general}
                         onChange={e => setFormGen(f => ({ ...f, hora_inicio_general: e.target.value }))}
+                        min={reglaJornada?.horaMin}
+                        max={reglaJornada?.horaMax}
                         style={estilos.input}
                         required
                       />
@@ -356,6 +439,8 @@ export default function BloquesHorarios() {
                         type="time"
                         value={formGen.hora_fin_general}
                         onChange={e => setFormGen(f => ({ ...f, hora_fin_general: e.target.value }))}
+                        min={reglaJornada?.horaMin}
+                        max={reglaJornada?.horaMax}
                         style={estilos.input}
                         required
                       />
@@ -437,9 +522,14 @@ export default function BloquesHorarios() {
                       disabled={creando}
                     >
                       <option value=''>— Selecciona un día —</option>
-                      {dias.map(d => (
-                        <option key={d.id_dia} value={d.id_dia}>{d.nombre_dia}</option>
-                      ))}
+                      {dias.map(d => {
+                        const noPermitido = diasPermitidos && !diasPermitidos.includes(d.nombre_dia)
+                        return (
+                          <option key={d.id_dia} value={d.id_dia} disabled={noPermitido}>
+                            {d.nombre_dia}{noPermitido ? ' (no permitido)' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                     {erroresInd.id_dia && <span style={estilos.errorMsg}>{erroresInd.id_dia[0]}</span>}
                   </div>
@@ -650,6 +740,11 @@ const estilos = {
     background: '#f0fdf4', border: '1px solid #bbf7d0',
     borderRadius: 'var(--radius-md)', padding: '10px 14px',
     fontSize: '13.5px', color: '#166534', fontWeight: 500,
+  },
+  reglaBanner: {
+    background: '#eff6ff', border: '1px solid #bfdbfe',
+    borderRadius: 'var(--radius-md)', padding: '8px 12px',
+    fontSize: '12.5px', color: '#1e40af', lineHeight: 1.5,
   },
   alertaError: {
     background: '#fef2f2', border: '1px solid #fecaca',

@@ -8,7 +8,9 @@ import LoadingState from '../../components/ui/LoadingState'
 import ErrorState   from '../../components/ui/ErrorState'
 import SeccionForm  from '../../components/forms/SeccionForm'
 import { getSecciones, crearSeccion, eliminarSeccion } from '../../api/secciones'
+import { getJornadas } from '../../api/carreraJornadas'
 import { getCursos }    from '../../api/cursos'
+import { getCarreras }  from '../../api/carreras'
 import { getPeriodos }  from '../../api/periodosAcademicos'
 
 /**
@@ -39,6 +41,7 @@ export default function Secciones() {
   // ── Catálogos para el form y filtros (carga al montar) ─────
   const [cursos,       setCursos]       = useState([])
   const [periodos,     setPeriodos]     = useState([])
+  const [carreras,     setCarreras]     = useState([])
   const [cargandoCat,  setCargandoCat]  = useState(false)
   const [errorCat,     setErrorCat]     = useState(null)
 
@@ -46,6 +49,10 @@ export default function Secciones() {
   const [filtroEstado,  setFiltroEstado]  = useState('')
   const [filtroCurso,   setFiltroCurso]   = useState('')
   const [filtroPeriodo, setFiltroPeriodo] = useState('')
+
+  // ── Selector de jornada (filtro maestro superior) ─────────
+  const [jornadas,      setJornadas]      = useState([])
+  const [idCarreraJornada, setIdCarreraJornada] = useState('')  // '' = todas
 
   // ── Formulario ─────────────────────────────────────────────
   const [mostrarForm, setMostrarForm] = useState(false)
@@ -65,6 +72,7 @@ export default function Secciones() {
       if (filtroEstado)  params.estado               = filtroEstado
       if (filtroCurso)   params.id_curso              = filtroCurso
       if (filtroPeriodo) params.id_periodo_academico  = filtroPeriodo
+      if (idCarreraJornada) params.id_carrera_jornada = idCarreraJornada
       setSecciones(await getSecciones(params))
     } catch (err) {
       setError(
@@ -75,7 +83,7 @@ export default function Secciones() {
     } finally {
       setCargando(false)
     }
-  }, [filtroEstado, filtroCurso, filtroPeriodo])
+  }, [filtroEstado, filtroCurso, filtroPeriodo, idCarreraJornada])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -85,9 +93,11 @@ export default function Secciones() {
       setCargandoCat(true)
       setErrorCat(null)
       try {
-        const [dataCursos, dataPeriodos] = await Promise.all([
+        const [dataCursos, dataPeriodos, dataJornadas, dataCarreras] = await Promise.all([
           getCursos({ estado: 'activo' }),
           getPeriodos(),
+          getJornadas(),
+          getCarreras({ estado: 'activo' }),
         ])
         setCursos(dataCursos)
         // Ordenar períodos: vigente primero, luego por año desc
@@ -97,8 +107,10 @@ export default function Secciones() {
           return (b.anio ?? 0) - (a.anio ?? 0)
         })
         setPeriodos(dataPeriodos)
+        setJornadas(dataJornadas ?? [])
+        setCarreras(dataCarreras ?? [])
       } catch {
-        setErrorCat('Error al cargar cursos o períodos.')
+        setErrorCat('Error al cargar catálogos.')
       } finally {
         setCargandoCat(false)
       }
@@ -177,7 +189,8 @@ export default function Secciones() {
           {cargandoCat
             ? <LoadingState texto="Cargando cursos y períodos…" alto="60px" />
             : <SeccionForm
-                cursos={cursos}
+                carreras={carreras}
+              cursos={cursos}
                 periodos={periodos}
                 onGuardar={onGuardar}
                 onCancelar={cerrarForm}
@@ -186,6 +199,13 @@ export default function Secciones() {
           }
         </Card>
       )}
+
+      {/* ── Filtro maestro: Carrera → Jornada (cascada) ─────────── */}
+      <FiltroCarreraJornada
+        carreras={carreras}
+        idCarreraJornada={idCarreraJornada}
+        onChange={setIdCarreraJornada}
+      />
 
       {/* Filtros */}
       <div style={est.filtros}>
@@ -247,6 +267,7 @@ export default function Secciones() {
             <table style={est.tabla}>
               <thead>
                 <tr>
+                  <th style={est.th}>Jornada</th>
                   <th style={est.th}>Curso</th>
                   <th style={est.th}>Sección</th>
                   <th style={est.th}>Período</th>
@@ -262,6 +283,16 @@ export default function Secciones() {
                   const enAccion = eliminando === s.id_seccion
                   return (
                     <tr key={s.id_seccion} style={est.tr}>
+                      <td style={est.td}>
+                        <div style={est.cursoNombre}>
+                          {s.carrera_jornada?.jornada?.nombre_jornada ?? '—'}
+                        </div>
+                        {s.carrera_jornada?.carrera?.nombre_carrera && (
+                          <code style={est.cursoCodigo}>
+                            {s.carrera_jornada.carrera.nombre_carrera}
+                          </code>
+                        )}
+                      </td>
                       <td style={est.td}>
                         <div style={est.cursoNombre}>{s.curso?.nombre_curso ?? '—'}</div>
                         {s.curso?.codigo_curso && (
@@ -332,7 +363,70 @@ export default function Secciones() {
 }
 
 /* ── Estilos ─────────────────────────────────────────────────────── */
+// ── Subcomponente: filtro maestro Carrera → Jornada ─────────────────────────
+// Igual que en SeccionForm: cascada real que envía id_carrera_jornada al padre.
+function FiltroCarreraJornada({ carreras, idCarreraJornada, onChange }) {
+  const [idCarrera,       setIdCarrera]       = useState('')
+  const [jornadasFiltro,  setJornadasFiltro]  = useState([])
+  const [cargando,        setCargando]         = useState(false)
+
+  useEffect(() => {
+    if (!idCarrera) { setJornadasFiltro([]); onChange(''); return }
+    setCargando(true)
+    import('../../api/axios').then(({ default: api }) =>
+      api.get(`/carreras/${idCarrera}`)
+        .then(r => setJornadasFiltro(r.data.jornadas_activas ?? []))
+        .catch(() => setJornadasFiltro([]))
+        .finally(() => setCargando(false))
+    )
+  }, [idCarrera]) // eslint-disable-line
+
+  return (
+    <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <select
+        value={idCarrera}
+        onChange={e => { setIdCarrera(e.target.value); onChange('') }}
+        style={est.select}
+      >
+        <option value="">Todas las carreras</option>
+        {carreras.map(c => (
+          <option key={c.id_carrera} value={c.id_carrera}>{c.nombre_carrera}</option>
+        ))}
+      </select>
+      <select
+        value={idCarreraJornada}
+        onChange={e => onChange(e.target.value)}
+        disabled={!idCarrera || cargando}
+        style={est.select}
+      >
+        <option value="">
+          {!idCarrera ? 'Selecciona primero una carrera' : cargando ? 'Cargando…' : 'Todas las jornadas'}
+        </option>
+        {jornadasFiltro.map(j => (
+          <option key={j.id_carrera_jornada} value={j.id_carrera_jornada}>
+            {j.nombre_jornada}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 const est = {
+  jornadaTabs: {
+    display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap',
+  },
+  jornadaTab: {
+    padding: '7px 16px', borderRadius: 'var(--radius-md)',
+    border: '1.5px solid var(--color-border)',
+    background: 'var(--color-surface)', color: 'var(--color-text-secondary)',
+    fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+    fontFamily: 'var(--font-sans)', transition: 'all .12s',
+  },
+  jornadaTabActivo: {
+    background: 'var(--color-primary)', color: '#fff',
+    border: '1.5px solid var(--color-primary)', fontWeight: 700,
+  },
   formHeader:  { marginBottom: '16px' },
   formTitulo:  { fontSize: '15px', fontWeight: 700, color: 'var(--color-text)', margin: 0 },
   alertaError: {

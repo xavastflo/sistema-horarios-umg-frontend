@@ -6,52 +6,89 @@ import EmptyState   from '../../components/ui/EmptyState'
 import LoadingState from '../../components/ui/LoadingState'
 import ErrorState   from '../../components/ui/ErrorState'
 import { useAuth }  from '../../context/AuthContext'
-import { getDocentes, getPerfilDocente }  from '../../api/docentes'
-import {
-  getDisponibilidad,
-  desmarcarBloque,
-} from '../../api/disponibilidadDocente'
+import { getDocentes, getPerfilDocente } from '../../api/docentes'
+import { getJornadas } from '../../api/carreraJornadas'
+import api from '../../api/axios'
 
 /**
- * DisponibilidadDocente — Paso 12 (corregido)
+ * DisponibilidadDocente
  *
- * REGLA: registro activo = docente NO disponible en ese bloque.
+ * CORRECCIONES:
+ *   1. DÍAS DINÁMICOS: eliminado DIAS_ORDEN hardcodeado. Los días se derivan
+ *      del response del backend — si Sábado no tiene bloques, no aparece.
  *
- * Permisos confirmados (routes/api.php):
- *   GET  /docentes/{id}/disponibilidad → línea 125: rol:administrador,coordinador
- *                                      → línea 217: rol:docente
- *   Está registrada en DOS grupos. Admin/coord consultan cualquier docente.
- *   El docente consulta su propia disponibilidad.
+ *   2. BLOQUES POR JORNADA DEL DOCENTE: al seleccionar un docente, se consulta
+ *      GET /docentes/{id}/disponibilidad/bloques que retorna solo los bloques
+ *      de las jornadas donde el docente tiene asignaciones activas.
+ *      Fallback: todos los bloques si el docente no tiene asignaciones aún.
  *
- *   DELETE /docentes/{id}/disponibilidad/{disp} → línea 220: solo rol:docente
- *   GET  /perfil/docente → línea 207: solo rol:docente
- *
- *   GET  /carreras → líneas 111-112: rol:administrador,coordinador ÚNICAMENTE
- *   GET  /carrera-jornadas/{id}/bloques → línea 162: rol:administrador,coordinador
- *   → El docente recibiría 403 en esos endpoints. No se consumen aquí.
- *
- * Comportamiento por rol:
- *   admin/coord: seleccionan docente y ven sus restricciones (solo consulta)
- *   docente: ve SUS restricciones y puede eliminarlas.
- *   El docente no puede agregar restricciones desde el frontend —
- *   requeriría acceso a carreras/bloques que el backend no expone al rol docente.
+ * REGLA: restricción = atributo del DOCENTE, no de la carrera.
+ *        Una celda roja aplica para todas las carreras de esa franja.
  */
+
+/** Orden preferido de días — solo se renderizan los que devuelva el backend */
+const ORDEN_DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+/**
+ * Normaliza nombre_dia del backend (minúsculas sin tilde) al formato de ORDEN_DIAS.
+ * 'lunes' → 'Lunes', 'miercoles' → 'Miércoles', 'sabado' → 'Sábado'
+ */
+const MAPA_DIAS = {
+  lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles',
+  jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo',
+}
+function normalizarDia(nombre) {
+  if (!nombre) return nombre
+  // Quitar tildes y pasar a minúsculas para el lookup
+  const clave = nombre.toLowerCase()
+    .replace(/á/g,'a').replace(/é/g,'e').replace(/í/g,'i')
+    .replace(/ó/g,'o').replace(/ú/g,'u')
+  return MAPA_DIAS[clave] ?? nombre
+}
+
 export default function DisponibilidadDocente() {
   const { perfilActivo } = useAuth()
   const esDocente = perfilActivo === 'docente'
 
-  const [idDocente,   setIdDocente]   = useState(null)
-  const [infoDocente, setInfoDocente] = useState(null)
-  const [docentes,    setDocentes]    = useState([])
-  const [cargandoCat, setCargandoCat] = useState(false)
-  const [errorCat,    setErrorCat]    = useState(null)
-  const [restricciones, setRestricciones] = useState([])
-  const [cargandoRestr, setCargandoRestr] = useState(false)
-  const [errorRestr,    setErrorRestr]    = useState(null)
-  const [desmarcando, setDesmarcando] = useState(null)
-  const [errorAccion, setErrorAccion] = useState(null)
-  const [okAccion,    setOkAccion]    = useState(null)
+  // ── Catálogos ──────────────────────────────────────────────
+  const [docentes,     setDocentes]     = useState([])
+  const [cargandoCat,  setCargandoCat]  = useState(false)
+  const [errorCat,     setErrorCat]     = useState(null)
 
+  // ── Docente activo ─────────────────────────────────────────
+  const [idDocente,    setIdDocente]    = useState(null)
+  const [infoDocente,  setInfoDocente]  = useState(null)
+
+  // ── Bloques del docente (por jornada) ──────────────────────
+  const [bloques,      setBloques]      = useState([])
+  const [cargandoBlq,  setCargandoBlq]  = useState(false)
+  const [errorBlq,     setErrorBlq]     = useState(null)
+
+  // ── Restricciones persistidas en BD ───────────────────────
+  // Set de keys "dia|hora_inicio|hora_fin"
+  const [restringidas, setRestringidas] = useState(new Set())
+  const [cargandoRestr,setCargandoRestr]= useState(false)
+  const [errorRestr,   setErrorRestr]   = useState(null)
+
+  // ── Cambios pendientes ─────────────────────────────────────
+  // Map: key → 'restringir' | 'liberar'
+  const [pendientes,   setPendientes]   = useState(new Map())
+
+  // ── Guardar ────────────────────────────────────────────────
+  const [guardando,    setGuardando]    = useState(false)
+  const [errorAccion,  setErrorAccion]  = useState(null)
+  const [okAccion,     setOkAccion]     = useState(null)
+
+  // ── Selector de jornada (filtro maestro de la cuadrícula) ──
+  const [jornadas,     setJornadas]     = useState([])
+  const [idJornada,    setIdJornada]    = useState('')  // '' = todas
+
+  // ── 0. Cargar catálogo de jornadas ────────────────────────
+  useEffect(() => {
+    getJornadas().then(setJornadas).catch(() => {})
+  }, [])
+
+  // ── 1. Inicializar según rol ───────────────────────────────
   useEffect(() => {
     async function init() {
       if (esDocente) {
@@ -76,15 +113,57 @@ export default function DisponibilidadDocente() {
     init()
   }, [esDocente])
 
+  // ── 2. Cargar bloques FILTRADOS por jornada del docente ────
+  // Se ejecuta cada vez que cambia idDocente.
+  // Endpoint: GET /docentes/{id}/disponibilidad/bloques
+  //   → retorna solo los bloques de las jornadas con asignaciones activas.
+  //   → fallback: todos los bloques si el docente no tiene asignaciones.
+  const cargarBloques = useCallback(async () => {
+    if (!idDocente) { setBloques([]); return }
+    setCargandoBlq(true)
+    setErrorBlq(null)
+    try {
+      const params = {}
+      if (idJornada) params.id_jornada = idJornada
+      const { data } = await api.get(`/docentes/${idDocente}/disponibilidad/bloques`, { params })
+      // Normalizar nombre_dia: BD guarda 'lunes','sabado' → ORDEN_DIAS espera 'Lunes','Sábado'
+      setBloques((data.bloques ?? []).map(b => ({
+        ...b,
+        nombre_dia: normalizarDia(b.nombre_dia),
+      })))
+    } catch (err) {
+      const st = err.response?.status
+      setErrorBlq(
+        st === 403 ? 'Sin permisos para cargar los bloques de este docente.' :
+        st === 401 ? 'Sesión expirada. Vuelve a iniciar sesión.' :
+        err.response?.data?.message ?? 'No se pudieron cargar los bloques horarios.'
+      )
+    } finally {
+      setCargandoBlq(false)
+    }
+  }, [idDocente, idJornada])
+
+  useEffect(() => { cargarBloques() }, [cargarBloques])
+
+  // ── 3. Cargar restricciones del docente en BD ──────────────
   const cargarDisponibilidad = useCallback(async () => {
-    if (!idDocente) { setRestricciones([]); return }
+    if (!idDocente) { setRestringidas(new Set()); setPendientes(new Map()); return }
     setCargandoRestr(true)
     setErrorRestr(null)
+    setPendientes(new Map())
     try {
-      const data = await getDisponibilidad(idDocente)
-      setRestricciones(data.bloques_no_disponibles ?? [])
+      const { data } = await api.get(`/docentes/${idDocente}/disponibilidad`)
+      const set = new Set()
+      ;(data.bloques_no_disponibles ?? []).forEach(r => {
+        const b  = r.bloque_horario
+        const hi = b?.hora_inicio?.slice(0, 5)
+        const hf = b?.hora_fin?.slice(0, 5)
+        const dia = normalizarDia(b?.dia?.nombre_dia)
+        if (dia && hi && hf) set.add(`${dia}|${hi}|${hf}`)
+      })
+      setRestringidas(set)
     } catch (err) {
-      setErrorRestr(err.response?.data?.message ?? 'Error al cargar restricciones.')
+      setErrorRestr(err.response?.data?.message ?? 'Error al cargar restricciones actuales.')
     } finally {
       setCargandoRestr(false)
     }
@@ -92,46 +171,127 @@ export default function DisponibilidadDocente() {
 
   useEffect(() => { cargarDisponibilidad() }, [cargarDisponibilidad])
 
-  async function onDesmarcar(idDisponibilidad) {
-    setDesmarcando(idDisponibilidad)
-    setErrorAccion(null)
-    setOkAccion(null)
-    try {
-      await desmarcarBloque(idDocente, idDisponibilidad)
-      setOkAccion('Restricción eliminada. El docente ahora está disponible en ese bloque.')
-      await cargarDisponibilidad()
-    } catch (err) {
-      setErrorAccion(err.response?.data?.message ?? 'No se pudo eliminar la restricción.')
-    } finally {
-      setDesmarcando(null)
-    }
+  // ── Derivar días y franjas del response ────────────────────
+  // DÍAS: solo los que tienen bloques, ordenados según ORDEN_DIAS
+  const diasPresentes = ORDEN_DIAS.filter(d =>
+    bloques.some(b => b.nombre_dia === d)
+  )
+
+  // FRANJAS: únicas por hora_inicio + hora_fin, deduplicadas
+  const franjasUnicas = [...new Map(
+    bloques.map(b => {
+      const hi = b.hora_inicio?.slice(0, 5) ?? ''
+      const hf = b.hora_fin?.slice(0, 5) ?? ''
+      return [`${hi}|${hf}`, { hi, hf, label: `${hi}–${hf}` }]
+    })
+  ).values()].sort((a, b) => a.hi.localeCompare(b.hi))
+
+  // ── Helpers de clave y estado ──────────────────────────────
+  const makeKey  = (dia, hi, hf) => `${dia}|${hi}|${hf}`
+  const tieneBloque = (dia, hi, hf) =>
+    bloques.some(b => b.nombre_dia === dia &&
+      b.hora_inicio?.slice(0,5) === hi &&
+      b.hora_fin?.slice(0,5)    === hf)
+
+  const estadoCelda = (dia, hi, hf) => {
+    const k = makeKey(dia, hi, hf)
+    const p = pendientes.get(k)
+    if (p === 'restringir') return 'pendiente_restringir'
+    if (p === 'liberar')    return 'pendiente_liberar'
+    if (restringidas.has(k)) return 'no_disponible'
+    return 'disponible'
   }
 
+  // ── Clic en celda ──────────────────────────────────────────
+  const handleCeldaClick = (dia, hi, hf) => {
+    const k = makeKey(dia, hi, hf)
+    const yaRestringida = restringidas.has(k)
+    const next = new Map(pendientes)
+    if (next.has(k)) {
+      next.delete(k)                                  // revertir
+    } else {
+      next.set(k, yaRestringida ? 'liberar' : 'restringir')
+    }
+    setPendientes(next)
+    setOkAccion(null)
+    setErrorAccion(null)
+  }
+
+  // ── Guardar en lote ────────────────────────────────────────
+  const onGuardarCambios = async () => {
+    if (!pendientes.size) return
+    setGuardando(true)
+    setErrorAccion(null)
+    setOkAccion(null)
+    let fallos = 0
+
+    for (const [key, accion] of pendientes.entries()) {
+      const [nombre_dia, hora_inicio, hora_fin] = key.split('|')
+      try {
+        await api.post(`/docentes/${idDocente}/disponibilidad/toggle`, {
+          nombre_dia,
+          hora_inicio,
+          hora_fin,
+          accion,               // explícito: 'restringir' | 'liberar'
+        })
+      } catch { fallos++ }
+    }
+
+    if (fallos > 0) {
+      setErrorAccion(`Completado con advertencias: ${fallos} cambio(s) no pudieron procesarse.`)
+    } else {
+      setOkAccion('Disponibilidad actualizada exitosamente en lote.')
+    }
+
+    await cargarDisponibilidad()
+    setGuardando(false)
+  }
+
+  // ── Estilos de celda según estado ─────────────────────────
+  const estiloYTexto = estado => {
+    if (estado === 'pendiente_restringir') return { estilo: est.celdaPendienteRestringir, texto: 'Bloquear (○)' }
+    if (estado === 'pendiente_liberar')    return { estilo: est.celdaPendienteLiberar,    texto: 'Liberar (↩)' }
+    if (estado === 'no_disponible')        return { estilo: est.celdaNoDisponible,         texto: 'No Disponible (✕)' }
+    return { estilo: est.celdaDisponible, texto: 'Disponible (✓)' }
+  }
+
+  // ── Render ─────────────────────────────────────────────────
   return (
     <div className="fade-in">
       <PageHeader
         titulo="Disponibilidad docente"
-        descripcion={esDocente
-          ? 'Consulta y elimina los bloques en los que estás marcado como no disponible.'
-          : 'Consulta las restricciones de disponibilidad de los docentes.'}
+        descripcion="Define las restricciones de franjas horarias del docente. Aplica para todas las carreras asociadas."
       />
 
       <div style={est.nota}>
         <span style={est.notaIcono}>⚠️</span>
         <span>
-          <strong>Registro activo = docente NO disponible.</strong>
-          {' '}Un bloque sin registro significa disponibilidad completa.
+          <strong>Cuadrícula personalizada por docente:</strong> Solo se muestran los días y
+          franjas de las jornadas donde el docente tiene asignaciones activas.
         </span>
       </div>
 
-      {esDocente && (
-        <div style={est.aviso}>
-          <span>ℹ️</span>
-          <span>
-            Para <strong>agregar</strong> una restricción de no disponibilidad, contacta
-            al coordinador o administrador del sistema. Desde aquí puedes ver y
-            <strong> eliminar</strong> las restricciones ya registradas.
-          </span>
+      {/* ── Selector de Jornada — filtra la cuadrícula ────────── */}
+      {jornadas.length > 0 && (
+        <div style={est.jornadaTabs}>
+          <button
+            style={{ ...est.jornadaTab, ...(idJornada === '' ? est.jornadaTabActivo : {}) }}
+            onClick={() => { setIdJornada(''); setPendientes(new Map()) }}
+          >
+            Todas las jornadas
+          </button>
+          {jornadas.map(j => (
+            <button
+              key={j.id_jornada}
+              style={{
+                ...est.jornadaTab,
+                ...(String(idJornada) === String(j.id_jornada) ? est.jornadaTabActivo : {}),
+              }}
+              onClick={() => { setIdJornada(j.id_jornada); setPendientes(new Map()) }}
+            >
+              {j.nombre_jornada}
+            </button>
+          ))}
         </div>
       )}
 
@@ -140,6 +300,7 @@ export default function DisponibilidadDocente() {
 
       {!cargandoCat && !errorCat && (
         <>
+          {/* Selector de docente (admin/coord) */}
           {!esDocente && (
             <Card style={{ marginBottom: '20px' }}>
               <div style={est.campo}>
@@ -150,7 +311,8 @@ export default function DisponibilidadDocente() {
                     const val = Number(e.target.value) || null
                     setIdDocente(val)
                     setInfoDocente(docentes.find(d => d.id_docente === val) ?? null)
-                    setOkAccion(null); setErrorAccion(null)
+                    setOkAccion(null)
+                    setErrorAccion(null)
                   }}
                   style={est.select}
                 >
@@ -171,9 +333,10 @@ export default function DisponibilidadDocente() {
             </Card>
           )}
 
+          {/* Info del docente autenticado */}
           {esDocente && infoDocente && (
             <Card style={{ marginBottom: '20px' }}>
-              <p style={est.label}>Tu perfil docente</p>
+              <p style={est.label}>Tu perfil docente activo</p>
               <p style={est.docenteNombre}>
                 {infoDocente.usuario?.nombre_completo ?? `Docente #${infoDocente.id_docente}`}
               </p>
@@ -188,68 +351,63 @@ export default function DisponibilidadDocente() {
 
           <Card padding="0">
             <div style={est.panelHeader}>
-              <h2 style={est.panelTitulo}>Restricciones activas</h2>
+              <h2 style={est.panelTitulo}>Matriz Semanal de Disponibilidad</h2>
             </div>
 
-            {cargandoRestr && <LoadingState texto="Cargando restricciones…" />}
-            {!cargandoRestr && errorRestr && (
-              <ErrorState mensaje={errorRestr} onReintentar={cargarDisponibilidad} />
+            {errorBlq  && <ErrorState mensaje={errorBlq} />}
+            {errorRestr && <ErrorState mensaje={errorRestr} onReintentar={cargarDisponibilidad} />}
+
+            {!errorBlq && !errorRestr && (cargandoBlq || cargandoRestr) && (
+              <LoadingState texto="Sincronizando la matriz con la base de datos…" />
             )}
-            {!cargandoRestr && !errorRestr && !idDocente && (
+
+            {!errorBlq && !errorRestr && !cargandoBlq && !cargandoRestr && !idDocente && (
               <EmptyState icono="👨‍🏫" titulo="Selecciona un docente"
-                descripcion="Las restricciones aparecerán aquí." />
+                descripcion="Por favor, selecciona un docente para cargar su matriz de horarios." />
             )}
-            {!cargandoRestr && !errorRestr && idDocente && restricciones.length === 0 && (
-              <EmptyState icono="✅" titulo="Sin restricciones registradas"
-                descripcion="El docente está disponible en todos los bloques." />
+
+            {!errorBlq && !errorRestr && !cargandoBlq && !cargandoRestr && idDocente && franjasUnicas.length === 0 && (
+              <EmptyState icono="🗓️" titulo="Sin franjas disponibles"
+                descripcion="Este docente no tiene asignaciones activas en el sistema. Asígnale cursos primero." />
             )}
-            {!cargandoRestr && !errorRestr && restricciones.length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
+
+            {!errorBlq && !errorRestr && !cargandoBlq && !cargandoRestr && idDocente && franjasUnicas.length > 0 && (
+              <div style={{ overflowX: 'auto', padding: '16px' }}>
                 <table style={est.tabla}>
                   <thead>
                     <tr>
-                      <th style={est.th}>Día</th>
-                      <th style={est.th}>Horario</th>
-                      <th style={est.th}>Jornada</th>
-                      <th style={est.th}>Observación</th>
-                      {esDocente && <th style={{ ...est.th, textAlign: 'right' }}>Acción</th>}
+                      <th style={est.th}>Horario / Franja</th>
+                      {/* DÍAS DINÁMICOS: solo los que tenga el docente */}
+                      {diasPresentes.map(d => <th key={d} style={est.th}>{d}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {restricciones.map(r => (
-                      <tr key={r.id_disponibilidad_docente} style={est.tr}>
-                        <td style={est.td}>
-                          <span style={est.dia}>
-                            {r.bloque_horario?.dia?.nombre_dia ?? '—'}
-                          </span>
+                    {franjasUnicas.map(({ hi, hf, label }) => (
+                      <tr key={label} style={est.tr}>
+                        <td style={{ ...est.td, fontWeight: 'bold', background: '#f9fafb', borderRight: '1px solid var(--color-border)' }}>
+                          {label}
                         </td>
-                        <td style={est.td}>
-                          <code style={est.horario}>
-                            {r.bloque_horario?.hora_inicio?.slice(0,5)}–{r.bloque_horario?.hora_fin?.slice(0,5)}
-                          </code>
-                        </td>
-                        <td style={est.td}>
-                          <span style={est.jornada}>
-                            {r.bloque_horario?.carrera_jornada?.jornada?.nombre_jornada ?? '—'}
-                          </span>
-                        </td>
-                        <td style={est.td}>
-                          {r.observacion
-                            ? <span style={est.obs}>{r.observacion}</span>
-                            : <span style={est.sinDato}>—</span>}
-                        </td>
-                        {esDocente && (
-                          <td style={{ ...est.td, textAlign: 'right' }}>
-                            <Button
-                              variante="ghost" size="sm"
-                              cargando={desmarcando === r.id_disponibilidad_docente}
-                              disabled={desmarcando === r.id_disponibilidad_docente}
-                              onClick={() => onDesmarcar(r.id_disponibilidad_docente)}
-                            >
-                              Eliminar restricción
-                            </Button>
-                          </td>
-                        )}
+                        {diasPresentes.map(dia => {
+                          // Celda vacía si este día no tiene bloque en esta franja
+                          if (!tieneBloque(dia, hi, hf)) {
+                            return <td key={dia} style={{ ...est.td, background: 'var(--color-bg)', opacity: .35 }} />
+                          }
+                          const estado = estadoCelda(dia, hi, hf)
+                          const { estilo, texto } = estiloYTexto(estado)
+                          return (
+                            <td key={dia} style={{ ...est.td, padding: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleCeldaClick(dia, hi, hf)}
+                                disabled={guardando}
+                                style={estilo}
+                                title={texto}
+                              >
+                                {texto}
+                              </button>
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -257,6 +415,23 @@ export default function DisponibilidadDocente() {
               </div>
             )}
           </Card>
+
+          {/* Barra flotante de cambios pendientes */}
+          {pendientes.size > 0 && (
+            <div style={est.barraFlotante}>
+              <span style={{ fontSize: '13.5px', fontWeight: 500 }}>
+                📝 Tienes <strong>{pendientes.size} cambio(s)</strong> locales pendientes de guardar.
+              </span>
+              <Button
+                variante="primary"
+                cargando={guardando}
+                disabled={guardando}
+                onClick={onGuardarCambios}
+              >
+                Guardar Disponibilidad
+              </Button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -265,18 +440,25 @@ export default function DisponibilidadDocente() {
 
 const est = {
   nota: {
-    display: 'flex', alignItems: 'center', gap: '8px',
+    display: 'flex', alignItems: 'flex-start', gap: '8px',
     background: '#fffbeb', border: '1px solid #fde68a',
     borderRadius: 'var(--radius-md)', padding: '10px 14px',
     fontSize: '13px', color: '#92400e', marginBottom: '14px', lineHeight: 1.5,
   },
   notaIcono: { fontSize: '16px', flexShrink: 0 },
-  aviso: {
-    display: 'flex', alignItems: 'flex-start', gap: '8px',
-    background: 'var(--color-primary-subtle)', border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-md)', padding: '10px 14px',
-    fontSize: '13px', color: 'var(--color-text-secondary)',
-    marginBottom: '20px', lineHeight: 1.55,
+  jornadaTabs: {
+    display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap',
+  },
+  jornadaTab: {
+    padding: '7px 18px', borderRadius: 'var(--radius-md)',
+    border: '1.5px solid var(--color-border)',
+    background: 'var(--color-surface)', color: 'var(--color-text-secondary)',
+    fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+    fontFamily: 'var(--font-sans)', transition: 'all .12s',
+  },
+  jornadaTabActivo: {
+    background: 'var(--color-primary)', color: '#fff',
+    border: '1.5px solid var(--color-primary)', fontWeight: 700,
   },
   campo:  { display: 'flex', flexDirection: 'column', gap: '5px' },
   label:  { fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)' },
@@ -308,21 +490,41 @@ const est = {
     borderRadius: 'var(--radius-md)', padding: '10px 14px',
     fontSize: '13.5px', color: 'var(--color-error)', fontWeight: 500, marginBottom: '14px',
   },
-  tabla:   { width: '100%', borderCollapse: 'collapse' },
+  tabla: { width: '100%', borderCollapse: 'collapse' },
   th: {
     padding: '10px 16px', background: 'var(--color-bg)',
     fontSize: '11.5px', fontWeight: 700, color: 'var(--color-text-secondary)',
     textTransform: 'uppercase', letterSpacing: '.06em',
-    textAlign: 'left', borderBottom: '1px solid var(--color-border)', whiteSpace: 'nowrap',
+    textAlign: 'center', borderBottom: '1px solid var(--color-border)', whiteSpace: 'nowrap',
   },
-  tr:      { borderBottom: '1px solid var(--color-border)' },
-  td:      { padding: '11px 16px', fontSize: '13.5px', color: 'var(--color-text)', verticalAlign: 'middle' },
-  dia:     { textTransform: 'capitalize', fontWeight: 500 },
-  horario: {
-    background: 'var(--color-primary-subtle)', color: 'var(--color-primary)',
-    padding: '2px 6px', borderRadius: 'var(--radius-sm)', fontSize: '12px',
+  tr: { borderBottom: '1px solid var(--color-border)' },
+  td: { padding: '8px', fontSize: '13.5px', color: 'var(--color-text)', textAlign: 'center', verticalAlign: 'middle' },
+  celdaDisponible: {
+    width: '100%', padding: '10px 6px', background: '#dcfce7', color: '#14532d',
+    border: '1px solid #bbf7d0', borderRadius: 'var(--radius-md)',
+    fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', fontSize: '12px',
   },
-  jornada: { fontSize: '13px', textTransform: 'capitalize' },
-  obs:     { fontSize: '12.5px', color: 'var(--color-text-secondary)', fontStyle: 'italic' },
-  sinDato: { color: 'var(--color-text-muted)' },
+  celdaNoDisponible: {
+    width: '100%', padding: '10px 6px', background: '#fee2e2', color: '#7f1d1d',
+    border: '1px solid #fecaca', borderRadius: 'var(--radius-md)',
+    fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', fontSize: '12px',
+  },
+  celdaPendienteRestringir: {
+    width: '100%', padding: '10px 6px', background: '#fef9c3', color: '#713f12',
+    border: '1.5px dashed #f59e0b', borderRadius: 'var(--radius-md)',
+    fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '12px',
+  },
+  celdaPendienteLiberar: {
+    width: '100%', padding: '10px 6px', background: '#e0f2fe', color: '#0369a1',
+    border: '1.5px dashed #38bdf8', borderRadius: 'var(--radius-md)',
+    fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '12px',
+  },
+  barraFlotante: {
+    position: 'fixed', top: '20px', right: '24px',
+    width: 'auto', maxWidth: '420px',
+    background: '#0f172a', color: '#fff',
+    padding: '12px 18px', borderRadius: 'var(--radius-xl)', display: 'flex',
+    alignItems: 'center', gap: '16px',
+    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.35)', zIndex: 50,
+  },
 }

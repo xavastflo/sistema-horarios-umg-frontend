@@ -28,6 +28,7 @@ import Horarios              from './pages/admin/Horarios'
 import Usuarios              from './pages/admin/Usuarios'
 import Reportes              from './pages/admin/Reportes'
 import Notificaciones        from './pages/admin/Notificaciones'
+import PerfilUsuario         from './pages/perfil/PerfilUsuario'
 
 /**
  * Redirige la raíz "/" al dashboard del perfil activo del usuario.
@@ -194,6 +195,15 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={['administrador', 'coordinador', 'docente']}>
                 <Reportes />
+              </ProtectedRoute>
+            }
+          />
+          {/* Perfil — accesible para todos los roles autenticados */}
+          <Route
+            path="perfil"
+            element={
+              <ProtectedRoute rolesPermitidos={['administrador', 'coordinador', 'docente', 'estudiante']}>
+                <PerfilUsuario />
               </ProtectedRoute>
             }
           />

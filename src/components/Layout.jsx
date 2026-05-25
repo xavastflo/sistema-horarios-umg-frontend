@@ -173,6 +173,15 @@ export default function Layout() {
 
         {/* Pie del sidebar */}
         <div style={estilos.sidebarPie}>
+          {/* Mi Perfil — accesible para todos los roles */}
+          <button
+            onClick={() => navigate('/perfil')}
+            style={estilos.btnLogout}
+            title="Mi perfil"
+          >
+            <span style={estilos.navIcon}>👤</span>
+            {sidebarAbierto && <span>Mi perfil</span>}
+          </button>
           <button
             onClick={handleLogout}
             disabled={cerrando}

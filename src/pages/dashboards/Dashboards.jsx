@@ -1,4 +1,4 @@
-import { useAuth } from '../../context/AuthContext'
+import { useAuth }       from '../../context/AuthContext'
 import PageHeader from '../../components/ui/PageHeader'
 import Card       from '../../components/ui/Card'
 
@@ -33,38 +33,39 @@ export function AdminDashboard() {
       />
 
       <Card>
-      <div style={estilos.grid}>
-        <DashboardCard
-          colorAccent="var(--color-role-admin)"
-          icono="👥"
-          titulo="Usuarios y roles"
-          descripcion="Gestiona usuarios, asigna roles y administra permisos de acceso."
-        />
-        <DashboardCard
-          colorAccent="var(--color-primary)"
-          icono="🏛️"
-          titulo="Facultades y carreras"
-          descripcion="Configura la estructura académica de la institución."
-        />
-        <DashboardCard
-          colorAccent="var(--color-accent)"
-          icono="📅"
-          titulo="Períodos académicos"
-          descripcion="Administra los períodos y controla el estado de cada uno."
-        />
-        <DashboardCard
-          colorAccent="var(--color-success)"
-          icono="✅"
-          titulo="Aprobación de horarios"
-          descripcion="Aprueba, bloquea y publica los horarios generados por coordinadores."
-        />
-      </div>
+        <div style={estilos.grid}>
+          <DashboardCard
+            colorAccent="var(--color-role-admin)"
+            icono="👥"
+            titulo="Usuarios y roles"
+            descripcion="Gestiona usuarios, asigna roles y administra permisos de acceso."
+          />
+          <DashboardCard
+            colorAccent="var(--color-primary)"
+            icono="🏛️"
+            titulo="Facultades y carreras"
+            descripcion="Configura la estructura académica de la institución."
+          />
+          <DashboardCard
+            colorAccent="var(--color-accent)"
+            icono="📅"
+            titulo="Períodos académicos"
+            descripcion="Administra los períodos y controla el estado de cada uno."
+          />
+          <DashboardCard
+            colorAccent="var(--color-success)"
+            icono="✅"
+            titulo="Aprobación de horarios"
+            descripcion="Aprueba, bloquea y publica los horarios generados por coordinadores."
+          />
+        </div>
 
-      <div style={estilos.aviso}>
-        <span style={estilos.avisoIcono}>🔧</span>
-        Las pantallas de gestión se habilitarán en próximos sprints del frontend.
-      </div>
+        <div style={estilos.aviso}>
+          <span style={estilos.avisoIcono}>🔧</span>
+          Las pantallas de gestión se habilitarán en próximos sprints del frontend.
+        </div>
       </Card>
+
     </div>
   )
 }

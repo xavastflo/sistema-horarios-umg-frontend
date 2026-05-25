@@ -1,47 +1,76 @@
 import { useState, useEffect } from 'react'
 import Button from '../ui/Button'
+import api    from '../../api/axios'
 
 /**
  * SeccionForm
  *
  * Formulario de creación de secciones.
- * No hay edición (no existe PUT en el backend).
+ * Tras la reingeniería, el usuario selecciona:
+ *   1. Carrera
+ *   2. Jornada (filtrada por la carrera elegida)
+ *   → id_carrera_jornada (enviado al backend)
+ *   3. Curso
+ *   4. Período académico
+ *   5. Número de sección (letra/código)
  *
  * Props:
- *   cursos     {array}    Cursos activos para el select
- *   periodos   {array}    Períodos activos para el select
+ *   cursos     {array}    Cursos activos
+ *   periodos   {array}    Períodos activos
+ *   carreras   {array}    Carreras activas (nuevo)
  *   onGuardar  {function} (datos) => Promise
  *   onCancelar {function}
- *   errores422 {object}   Mapa campo → [mensajes]
+ *   errores422 {object}
  */
 export default function SeccionForm({
   cursos     = [],
   periodos   = [],
+  carreras   = [],
   onGuardar,
   onCancelar,
   errores422 = {},
 }) {
   const [form, setForm] = useState({
+    id_carrera:           '',
+    id_carrera_jornada:   '',
     id_curso:             '',
     id_periodo_academico: '',
     numero_seccion:       '',
   })
-  const [guardando, setGuardando] = useState(false)
+  const [guardando,       setGuardando]       = useState(false)
+  const [jornadasCarrera, setJornadasCarrera] = useState([])
+  const [cargandoJorn,    setCargandoJorn]    = useState(false)
 
-  // Limpiar formulario si los catálogos cambian (defensa ante re-uso del componente)
+  // Reset al montar
   useEffect(() => {
-    setForm({ id_curso: '', id_periodo_academico: '', numero_seccion: '' })
+    setForm({ id_carrera: '', id_carrera_jornada: '', id_curso: '', id_periodo_academico: '', numero_seccion: '' })
   }, []) // eslint-disable-line
+
+  // Cargar jornadas cuando cambia la carrera
+  useEffect(() => {
+    if (!form.id_carrera) { setJornadasCarrera([]); return }
+    setCargandoJorn(true)
+    api.get(`/carreras/${form.id_carrera}`)
+      .then(r => setJornadasCarrera(r.data.jornadas_activas ?? []))
+      .catch(() => setJornadasCarrera([]))
+      .finally(() => setCargandoJorn(false))
+  }, [form.id_carrera])
 
   function onChange(e) {
     const { name, value } = e.target
-    setForm(f => ({ ...f, [name]: value }))
+    setForm(f => ({
+      ...f,
+      [name]: value,
+      // Si cambia la carrera, resetear la jornada
+      ...(name === 'id_carrera' ? { id_carrera_jornada: '' } : {}),
+    }))
   }
 
   async function onSubmit(e) {
     e.preventDefault()
     setGuardando(true)
     await onGuardar({
+      id_carrera_jornada:   Number(form.id_carrera_jornada),
       id_curso:             Number(form.id_curso),
       id_periodo_academico: Number(form.id_periodo_academico),
       numero_seccion:       form.numero_seccion.trim().toUpperCase(),
@@ -52,7 +81,58 @@ export default function SeccionForm({
   return (
     <form onSubmit={onSubmit} noValidate style={es.form}>
 
-      {/* Curso */}
+      {/* ── 1. Carrera ─────────────────────────────────────── */}
+      <div style={es.campo}>
+        <label style={es.label} htmlFor="id_carrera">
+          Carrera <span style={es.req}>*</span>
+        </label>
+        <select
+          id="id_carrera" name="id_carrera"
+          value={form.id_carrera} onChange={onChange}
+          disabled={guardando}
+          style={es.input}
+        >
+          <option value="">— Selecciona una carrera —</option>
+          {carreras.map(c => (
+            <option key={c.id_carrera} value={c.id_carrera}>
+              {c.nombre_carrera}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── 2. Jornada ─────────────────────────────────────── */}
+      <div style={es.campo}>
+        <label style={es.label} htmlFor="id_carrera_jornada">
+          Jornada <span style={es.req}>*</span>
+        </label>
+        <select
+          id="id_carrera_jornada" name="id_carrera_jornada"
+          value={form.id_carrera_jornada} onChange={onChange}
+          disabled={guardando || !form.id_carrera || cargandoJorn}
+          style={{ ...es.input, ...(errores422.id_carrera_jornada ? es.inputErr : {}) }}
+        >
+          <option value="">
+            {!form.id_carrera     ? '— Selecciona primero una carrera —'
+              : cargandoJorn      ? 'Cargando jornadas…'
+              : jornadasCarrera.length === 0 ? 'Sin jornadas activas'
+              : '— Selecciona la jornada —'}
+          </option>
+          {jornadasCarrera.map(j => (
+            <option key={j.id_carrera_jornada} value={j.id_carrera_jornada}>
+              {j.nombre_jornada}
+            </option>
+          ))}
+        </select>
+        {errores422.id_carrera_jornada && (
+          <span style={es.errorMsg}>{errores422.id_carrera_jornada[0]}</span>
+        )}
+        <span style={es.hint}>
+          Permite crear "Sección A Matutina" y "Sección A Vespertina" de forma independiente.
+        </span>
+      </div>
+
+      {/* ── 3. Curso ───────────────────────────────────────── */}
       <div style={es.campo}>
         <label style={es.label} htmlFor="id_curso">
           Curso <span style={es.req}>*</span>
@@ -75,7 +155,7 @@ export default function SeccionForm({
         )}
       </div>
 
-      {/* Período académico */}
+      {/* ── 4. Período ─────────────────────────────────────── */}
       <div style={es.campo}>
         <label style={es.label} htmlFor="id_periodo_academico">
           Período académico <span style={es.req}>*</span>
@@ -89,9 +169,7 @@ export default function SeccionForm({
           <option value="">— Selecciona un período —</option>
           {periodos.map(p => (
             <option key={p.id_periodo_academico} value={p.id_periodo_academico}>
-              {p.nombre_periodo}
-              {p.anio ? ` (${p.anio})` : ''}
-              {p.es_vigente ? ' ★' : ''}
+              {p.nombre_periodo}{p.anio ? ` (${p.anio})` : ''}{p.es_vigente ? ' ★' : ''}
             </option>
           ))}
         </select>
@@ -100,21 +178,20 @@ export default function SeccionForm({
         )}
       </div>
 
-      {/* Número de sección */}
+      {/* ── 5. Número / letra de sección ───────────────────── */}
       <div style={es.campo}>
         <label style={es.label} htmlFor="numero_seccion">
-          Número de sección <span style={es.req}>*</span>
+          Letra / código de sección <span style={es.req}>*</span>
         </label>
         <input
           id="numero_seccion" name="numero_seccion"
           type="text" maxLength={10}
           value={form.numero_seccion} onChange={onChange}
-          placeholder='Ej: A, B, 01, 02 (se convierte a mayúsculas)'
+          placeholder="Ej: A, B, 01 (se convierte a mayúsculas)"
           disabled={guardando}
           style={{
             ...es.input,
-            fontFamily:    'var(--font-mono)',
-            letterSpacing: '.06em',
+            fontFamily: 'var(--font-mono)', letterSpacing: '.06em',
             ...(errores422.numero_seccion ? es.inputErr : {}),
           }}
         />
@@ -122,7 +199,7 @@ export default function SeccionForm({
           <span style={es.errorMsg}>{errores422.numero_seccion[0]}</span>
         )}
         <span style={es.hint}>
-          Único por combinación de curso + período. El backend convierte a mayúsculas.
+          Único por jornada + curso + período. Puede repetirse en otras jornadas.
         </span>
       </div>
 
@@ -130,7 +207,10 @@ export default function SeccionForm({
         <Button variante="ghost" type="button" onClick={onCancelar} disabled={guardando}>
           Cancelar
         </Button>
-        <Button variante="primary" type="submit" cargando={guardando}>
+        <Button
+          variante="primary" type="submit" cargando={guardando}
+          disabled={!form.id_carrera_jornada || guardando}
+        >
           Crear sección
         </Button>
       </div>
