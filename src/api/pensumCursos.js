@@ -25,9 +25,9 @@ export async function getCursosPensum(idPensum, params = {}) {
 }
 
 /**
- * Asocia un curso al pensum en un ciclo/semestre.
+ * Asocia un curso al pensum en un ciclo/semestre con su carga de bloques.
  * @param {number} idPensum
- * @param {{ id_curso: number, ciclo_semestre: number }} datos
+ * @param {{ id_curso: number, ciclo_semestre: number, bloques_semanales: number }} datos
  */
 export async function asociarCurso(idPensum, datos) {
   const response = await api.post(`/pensums/${idPensum}/cursos`, datos)
@@ -35,11 +35,11 @@ export async function asociarCurso(idPensum, datos) {
 }
 
 /**
- * Actualiza el ciclo_semestre de una asociación.
- * Solo acepta { ciclo_semestre } — el id_curso no es editable.
+ * Actualiza el ciclo_semestre y bloques_semanales de una asociación.
+ * El id_curso no es editable.
  * @param {number} idPensum
  * @param {number} idPensumCurso  (id_pensum_curso, no id_curso)
- * @param {{ ciclo_semestre: number }} datos
+ * @param {{ ciclo_semestre: number, bloques_semanales: number }} datos
  */
 export async function actualizarCiclo(idPensum, idPensumCurso, datos) {
   const response = await api.patch(`/pensums/${idPensum}/cursos/${idPensumCurso}`, datos)

@@ -149,11 +149,16 @@ export default function SeccionForm({
               : jornadasCarrera.length === 0 ? 'Sin jornadas activas'
               : '— Selecciona la jornada —'}
           </option>
-          {jornadasCarrera.map(j => (
-            <option key={j.id_carrera_jornada} value={j.id_carrera_jornada}>
-              {j.nombre_jornada}
-            </option>
-          ))}
+          {jornadasCarrera.map(j => {
+              // La relación BelongsToMany expone id_carrera_jornada en j.pivot.
+              // Fallback a j.id_carrera_jornada si el endpoint ya lo aplanó.
+              const idCj = j.pivot?.id_carrera_jornada ?? j.id_carrera_jornada
+              return (
+                <option key={idCj} value={idCj}>
+                  {j.nombre_jornada}
+                </option>
+              )
+            })}
         </select>
         {errores422.id_carrera_jornada && (
           <span style={es.errorMsg}>{errores422.id_carrera_jornada[0]}</span>

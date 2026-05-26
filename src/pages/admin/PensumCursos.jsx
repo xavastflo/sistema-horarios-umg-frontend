@@ -50,15 +50,16 @@ export default function PensumCursos() {
   const [asocActivas, setAsocActivas] = useState([])
 
   // ── Formulario de asociar ──────────────────────────────────
-  const [formNuevo,     setFormNuevo]     = useState({ id_curso: '', ciclo_semestre: '' })
+  const [formNuevo,     setFormNuevo]     = useState({ id_curso: '', ciclo_semestre: '', bloques_semanales: 1 })
   const [asociando,     setAsociando]     = useState(false)
   const [erroresAsoc,   setErroresAsoc]   = useState({})
   const [errorFormAsoc, setErrorFormAsoc] = useState(null)
   const [okAsoc,        setOkAsoc]        = useState(null)
 
-  // ── Edición inline de ciclo_semestre ──────────────────────
+  // ── Edición inline de ciclo_semestre y bloques_semanales ──
   const [editandoId,   setEditandoId]   = useState(null)  // id_pensum_curso en edición
   const [cicloEdit,    setCicloEdit]    = useState('')
+  const [bloquesEdit,  setBloquesEdit]  = useState(1)
   const [guardandoEdit,setGuardandoEdit]= useState(false)
   const [errorEdit,    setErrorEdit]    = useState(null)
 
@@ -128,7 +129,7 @@ export default function PensumCursos() {
     const val = e.target.value
     setIdPensum(val)
     setPensumActual(pensums.find(p => p.id_pensum === Number(val)) ?? null)
-    setFormNuevo({ id_curso: '', ciclo_semestre: '' })
+    setFormNuevo({ id_curso: '', ciclo_semestre: '', bloques_semanales: 1 })
     setErroresAsoc({})
     setErrorFormAsoc(null)
     setOkAsoc(null)
@@ -149,10 +150,11 @@ export default function PensumCursos() {
     try {
       await asociarCurso(Number(idPensum), {
         id_curso:       Number(formNuevo.id_curso),
-        ciclo_semestre: Number(formNuevo.ciclo_semestre),
+        ciclo_semestre:    Number(formNuevo.ciclo_semestre),
+        bloques_semanales: Number(formNuevo.bloques_semanales) || 1,
       })
       setOkAsoc('Curso asociado correctamente.')
-      setFormNuevo({ id_curso: '', ciclo_semestre: '' })
+      setFormNuevo({ id_curso: '', ciclo_semestre: '', bloques_semanales: 1 })
       await cargarCursosPensum()
       await cargarAsocActivas() // mantener selector sincronizado
     } catch (err) {
@@ -170,27 +172,35 @@ export default function PensumCursos() {
     }
   }
 
-  // ── Edición inline de ciclo_semestre ──────────────────────
+  // ── Edición inline de ciclo_semestre y bloques_semanales ──
   function abrirEdicion(asoc) {
     setEditandoId(asoc.id_pensum_curso)
     setCicloEdit(String(asoc.ciclo_semestre))
+    setBloquesEdit(asoc.bloques_semanales ?? 1)
     setErrorEdit(null)
   }
-  function cancelarEdicion() { setEditandoId(null); setCicloEdit(''); setErrorEdit(null) }
+  function cancelarEdicion() {
+    setEditandoId(null)
+    setCicloEdit('')
+    setBloquesEdit(1)
+    setErrorEdit(null)
+  }
 
   async function onGuardarCiclo(asoc) {
     setGuardandoEdit(true)
     setErrorEdit(null)
     try {
       await actualizarCiclo(Number(idPensum), asoc.id_pensum_curso, {
-        ciclo_semestre: Number(cicloEdit),
+        ciclo_semestre:    Number(cicloEdit),
+        bloques_semanales: Number(bloquesEdit) || 1,
       })
       setEditandoId(null)
       await cargarCursosPensum()
     } catch (err) {
       const msg = err.response?.data?.errors?.ciclo_semestre?.[0]
+              ?? err.response?.data?.errors?.bloques_semanales?.[0]
               ?? err.response?.data?.message
-              ?? 'Error al actualizar el ciclo.'
+              ?? 'Error al actualizar.'
       setErrorEdit(msg)
     } finally {
       setGuardandoEdit(false)
@@ -303,6 +313,24 @@ export default function PensumCursos() {
                     )}
                   </div>
 
+                  {/* Bloques semanales */}
+                  <div style={est.campo}>
+                    <label style={est.label}>Bloques por semana <span style={est.req}>*</span></label>
+                    <select
+                      value={formNuevo.bloques_semanales}
+                      onChange={e => setFormNuevo(f => ({ ...f, bloques_semanales: Number(e.target.value) }))}
+                      disabled={asociando}
+                      style={{ ...est.input, ...(erroresAsoc.bloques_semanales ? est.inputErr : {}) }}
+                    >
+                      {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                        <option key={n} value={n}>{n} bloque{n > 1 ? 's' : ''}</option>
+                      ))}
+                    </select>
+                    {erroresAsoc.bloques_semanales && (
+                      <span style={est.errorMsg}>{erroresAsoc.bloques_semanales[0]}</span>
+                    )}
+                  </div>
+
                   {okAsoc    && <div style={est.alertaOk}>✓ {okAsoc}</div>}
                   {errorFormAsoc && <div style={est.alertaError} role="alert">{errorFormAsoc}</div>}
 
@@ -363,6 +391,7 @@ export default function PensumCursos() {
                       <tr>
                         <th style={est.th}>Curso</th>
                         <th style={est.th}>Ciclo</th>
+                        <th style={est.th}>Bloques/sem.</th>
                         <th style={est.th}>Estado</th>
                         <th style={{ ...est.th, textAlign: 'right' }}>Acciones</th>
                       </tr>
@@ -394,6 +423,26 @@ export default function PensumCursos() {
                                 <Badge
                                   texto={`Ciclo ${a.ciclo_semestre}`}
                                   variante="info"
+                                />
+                              )}
+                            </td>
+                            {/* Bloques semanales */}
+                            <td style={est.td}>
+                              {editandoId === a.id_pensum_curso ? (
+                                <select
+                                  value={bloquesEdit}
+                                  onChange={e => setBloquesEdit(Number(e.target.value))}
+                                  disabled={guardandoEdit}
+                                  style={{ ...est.input, width: '80px', padding: '5px 8px' }}
+                                >
+                                  {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                                    <option key={n} value={n}>{n}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Badge
+                                  texto={`${a.bloques_semanales ?? 1} blq`}
+                                  variante={a.bloques_semanales > 1 ? 'warning' : 'neutral'}
                                 />
                               )}
                             </td>

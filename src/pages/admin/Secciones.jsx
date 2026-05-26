@@ -398,11 +398,14 @@ function FiltroCarreraJornada({ carreras, idCarreraJornada, onChange }) {
         <option value="">
           {!idCarrera ? 'Selecciona primero una carrera' : cargando ? 'Cargando…' : 'Todas las jornadas'}
         </option>
-        {jornadasFiltro.map(j => (
-          <option key={j.id_carrera_jornada} value={j.id_carrera_jornada}>
-            {j.nombre_jornada}
-          </option>
-        ))}
+        {jornadasFiltro.map(j => {
+          const idCj = j.pivot?.id_carrera_jornada ?? j.id_carrera_jornada
+          return (
+            <option key={idCj} value={idCj}>
+              {j.nombre_jornada}
+            </option>
+          )
+        })}
       </select>
     </div>
   )
