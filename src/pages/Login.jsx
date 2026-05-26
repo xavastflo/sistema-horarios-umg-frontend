@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { rutaDashboard } from '../components/ProtectedRoute'
+import logoUMG from '../assets/logo-umg.png';
 
 export default function Login() {
   const { iniciarSesion, token, perfilActivo, cargando } = useAuth()
@@ -45,11 +46,26 @@ export default function Login() {
   if (cargando) return null // esperar rehidratación antes de mostrar login
 
   return (
-    <div style={estilos.pagina}>
+<div style={estilos.pagina}>
       {/* Panel izquierdo decorativo */}
       <div style={estilos.panelIzq}>
         <div style={estilos.panelContenido}>
-          <div style={estilos.logoBig}>H</div>
+          
+          {/* REEMPLAZO AQUÍ: Cambiamos la H por la imagen */}
+          <div style={estilos.logoBig}>
+            <img 
+                src={logoUMG} 
+                alt="Logo UMG" 
+                style={{ 
+                  height: '110px', 
+                  width: 'auto', 
+                  objectFit: 'contain', 
+                  margin: '0 auto',
+                  // Quitamos mixBlendMode para que no arruine los colores
+                }} 
+              />
+          </div>
+
           <h1 style={estilos.titulo}>Sistema de<br />Horarios</h1>
           <p style={estilos.subtitulo}>Universidad Mariano Gálvez</p>
           <div style={estilos.decorLinea} />
