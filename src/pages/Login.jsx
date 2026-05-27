@@ -43,6 +43,8 @@ export default function Login() {
     setEnviando(false)
   }
 
+  const [verRecuperar, setVerRecuperar] = useState(false)
+
   if (cargando) return null // esperar rehidratación antes de mostrar login
 
   return (
@@ -142,6 +144,17 @@ export default function Login() {
             </div>
           )}
 
+          {/* Enlace recuperación */}
+          <div style={{ textAlign: 'right', marginTop: '-10px' }}>
+            <button
+              type="button"
+              onClick={() => setVerRecuperar(true)}
+              style={estilos.btnRecuperar}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
+
           {/* Botón submit */}
           <button
             type="submit"
@@ -154,6 +167,31 @@ export default function Login() {
             }
           </button>
         </form>
+
+        {/* Modal informativo de recuperación */}
+        {verRecuperar && (
+          <div style={estilos.modalOverlay} onClick={() => setVerRecuperar(false)}>
+            <div style={estilos.modalBox} onClick={e => e.stopPropagation()}>
+              <h3 style={estilos.modalTitulo}>¿Cómo recuperar tu contraseña?</h3>
+              <p style={estilos.modalTexto}>
+                Para recuperar el acceso a tu cuenta, comunícate con el
+                <strong> administrador del sistema</strong> o con el
+                coordinador de tu carrera.
+              </p>
+              <p style={estilos.modalTexto}>
+                Proporciona tu nombre de usuario y correo electrónico
+                para que puedan verificar tu identidad y restablecer tu contraseña.
+              </p>
+              <button
+                type="button"
+                onClick={() => setVerRecuperar(false)}
+                style={estilos.modalBtnCerrar}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        )}
 
         <p style={estilos.footer}>
           UMG — Sistema de Horarios Universitarios
@@ -341,5 +379,63 @@ const estilos = {
     fontSize:   '12px',
     color:      'var(--color-text-muted)',
     textAlign:  'center',
+  },
+
+  btnRecuperar: {
+    background:  'transparent',
+    border:      'none',
+    fontSize:    '12.5px',
+    color:       'var(--color-primary)',
+    cursor:      'pointer',
+    padding:     0,
+    fontFamily:  'var(--font-sans)',
+    textDecoration: 'underline',
+    textDecorationStyle: 'dotted',
+  },
+
+  modalOverlay: {
+    position:        'fixed',
+    inset:           0,
+    background:      'rgba(0,0,0,0.45)',
+    display:         'flex',
+    alignItems:      'center',
+    justifyContent:  'center',
+    zIndex:          200,
+  },
+  modalBox: {
+    background:    'var(--color-surface)',
+    borderRadius:  'var(--radius-lg)',
+    padding:       '28px 32px',
+    maxWidth:      '400px',
+    width:         '90%',
+    boxShadow:     '0 20px 60px rgba(0,0,0,0.25)',
+    display:       'flex',
+    flexDirection: 'column',
+    gap:           '12px',
+  },
+  modalTitulo: {
+    fontSize:    '16px',
+    fontWeight:  700,
+    color:       'var(--color-text)',
+    margin:      0,
+  },
+  modalTexto: {
+    fontSize:   '13.5px',
+    color:      'var(--color-text-secondary)',
+    lineHeight: 1.6,
+    margin:     0,
+  },
+  modalBtnCerrar: {
+    alignSelf:     'flex-end',
+    marginTop:     '4px',
+    padding:       '8px 20px',
+    background:    'var(--color-primary)',
+    color:         '#fff',
+    border:        'none',
+    borderRadius:  'var(--radius-md)',
+    fontSize:      '13.5px',
+    fontWeight:    600,
+    cursor:        'pointer',
+    fontFamily:    'var(--font-sans)',
   },
 }

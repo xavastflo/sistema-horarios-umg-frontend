@@ -89,10 +89,13 @@ export default function SeccionForm({
 
   function onChange(e) {
     const { name, value } = e.target
+    // numero_seccion: solo letras A-Z (sin números ni especiales), forzar mayúsculas
+    const valorFinal = name === 'numero_seccion'
+      ? value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').toUpperCase()
+      : value
     setForm(f => ({
       ...f,
-      [name]: value,
-      // Si cambia la carrera, resetear la jornada
+      [name]: valorFinal,
       ...(name === 'id_carrera' ? { id_carrera_jornada: '' } : {}),
     }))
   }
@@ -182,7 +185,12 @@ export default function SeccionForm({
           <option value="">
             {!form.id_carrera ? '— Selecciona primero una carrera —' : '— Selecciona un curso —'}
           </option>
-          {cursosFiltrados.map(c => (
+          {[...cursosFiltrados].sort((a, b) => {
+              const nA = parseInt(a.codigo_curso, 10)
+              const nB = parseInt(b.codigo_curso, 10)
+              if (!isNaN(nA) && !isNaN(nB)) return nA - nB
+              return a.codigo_curso.localeCompare(b.codigo_curso)
+            }).map(c => (
             <option key={c.id_curso} value={c.id_curso}>
               [{c.codigo_curso}] {c.nombre_curso}
             </option>
@@ -225,7 +233,7 @@ export default function SeccionForm({
           id="numero_seccion" name="numero_seccion"
           type="text" maxLength={10}
           value={form.numero_seccion} onChange={onChange}
-          placeholder="Ej: A, B, 01 (se convierte a mayúsculas)"
+          placeholder="Ej: A, B, C"
           disabled={guardando}
           style={{
             ...es.input,
@@ -237,6 +245,7 @@ export default function SeccionForm({
           <span style={es.errorMsg}>{errores422.numero_seccion[0]}</span>
         )}
         <span style={es.hint}>
+          Solo letras (A, B, C…). Se convierte automáticamente a mayúsculas.
           Único por jornada + curso + período. Puede repetirse en otras jornadas.
         </span>
       </div>

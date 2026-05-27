@@ -48,6 +48,7 @@ export default function PeriodoAcademicoForm({
     estado:                        inicial.estado                        ?? 'planificacion',
   })
   const [guardando, setGuardando] = useState(false)
+  const [errorFechas, setErrorFechas] = useState('')
 
   useEffect(() => {
     setForm({
@@ -63,6 +64,7 @@ export default function PeriodoAcademicoForm({
   function onChange(e) {
     const { name, value } = e.target
     setForm(f => ({ ...f, [name]: value }))
+    if (name === 'fecha_inicio' || name === 'fecha_fin') setErrorFechas('')
   }
 
   // Vista previa del nombre que construirá el backend
@@ -78,6 +80,17 @@ export default function PeriodoAcademicoForm({
 
   async function onSubmit(e) {
     e.preventDefault()
+
+    // Validación cruzada de fechas — comparación directa de strings YYYY-MM-DD.
+    // No usa new Date() para evitar el bug UTC: en zonas UTC-6 el string '2025-06-01'
+    // se interpreta como medianoche UTC y retrocede al día anterior, causando que
+    // fechas válidas se reporten erróneamente como invertidas.
+    if (form.fecha_inicio && form.fecha_fin && form.fecha_fin < form.fecha_inicio) {
+      setErrorFechas('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+      return
+    }
+    setErrorFechas('')
+
     setGuardando(true)
     await onGuardar({
       nombre_base:    form.nombre_base,
@@ -162,6 +175,9 @@ export default function PeriodoAcademicoForm({
       )}
 
       {/* ── Fechas ──────────────────────────────────────────── */}
+      {errorFechas && (
+        <div style={es.errorFechas} role="alert">{errorFechas}</div>
+      )}
       <div style={es.fila2}>
         {campo('fecha_inicio', 'Fecha de inicio', true,
           <input
@@ -218,6 +234,11 @@ export default function PeriodoAcademicoForm({
 }
 
 const es = {
+  errorFechas: {
+    background: '#fef2f2', border: '1px solid #fecaca',
+    borderRadius: 'var(--radius-md)', padding: '8px 12px',
+    fontSize: '13px', color: 'var(--color-error)', fontWeight: 500,
+  },
   form:   { display: 'flex', flexDirection: 'column', gap: '16px' },
   fila2:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
   campo:  { display: 'flex', flexDirection: 'column', gap: '5px' },

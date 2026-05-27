@@ -24,6 +24,17 @@ import { getJornadas, getCarreraConJornadas, asignarJornadas } from '../../api/c
  *
  * Sin DELETE: el backend no expone desasignación de jornadas.
  */
+/**
+ * Convierte un valor snake_case del backend a texto legible para la UI.
+ * Ejemplos: 'fin_de_semana' → 'Fin de semana' | 'matutina' → 'Matutina'
+ */
+function formatLabel(valor) {
+  if (!valor) return valor
+  return valor
+    .replace(/_/g, ' ')
+    .replace(/^\w/, c => c.toUpperCase())
+}
+
 export default function CarreraJornadas() {
   // ── Catálogos (carga inicial) ──────────────────────────────
   const [carreras,        setCarreras]        = useState([])
@@ -196,7 +207,7 @@ export default function CarreraJornadas() {
                       {jornadasAsignadas.map(j => (
                         <Badge
                           key={j.id_jornada}
-                          texto={j.nombre_jornada}
+                          texto={formatLabel(j.nombre_jornada)}
                           variante="info"
                           dot
                         />
@@ -242,7 +253,7 @@ export default function CarreraJornadas() {
                           style={estilos.checkbox}
                         />
                         <span style={estilos.checkTexto}>
-                          {j.nombre_jornada}
+                          {formatLabel(j.nombre_jornada)}
                           {yaActiva && (
                             <span style={estilos.etiquetaActiva}> — ya asignada</span>
                           )}

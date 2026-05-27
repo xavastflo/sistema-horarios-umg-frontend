@@ -198,7 +198,13 @@ export default function Cursos() {
                 </tr>
               </thead>
               <tbody>
-                {cursos.map(c => (
+                {[...cursos].sort((a, b) => {
+                  // Numérico si ambos códigos son enteros puros, alfanumérico si no
+                  const nA = parseInt(a.codigo_curso, 10)
+                  const nB = parseInt(b.codigo_curso, 10)
+                  if (!isNaN(nA) && !isNaN(nB)) return nA - nB
+                  return a.codigo_curso.localeCompare(b.codigo_curso)
+                }).map(c => (
                   <tr key={c.id_curso} style={est.tr}>
                     <td style={est.td}>
                       <div style={est.nombre}>{c.nombre_curso}</div>
