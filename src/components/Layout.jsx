@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { rutaDashboard } from './ProtectedRoute'
 import logoUMG from '../assets/logo-umg.png'; // Ajusta los puntos según la profundidad del archivo
+import { getNoLeidas, leerTodas } from '../api/notificaciones'
 
 /** Iconos SVG inline — sin dependencia de librería */
 const IconDashboard   = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -33,7 +34,7 @@ const IconPublicado  = () => <svg width="18" height="18" fill="none" stroke="cur
 const MENU_POR_ROL = {
   administrador: [
     { label: 'Dashboard',           path: '/admin/dashboard',  Icono: IconDashboard  },
-    { label: 'Gestión académica',   path: '/pendiente',        Icono: IconAcademico,  modulo: 'Gestión académica'  },
+   // { label: 'Gestión académica',   path: '/pendiente',        Icono: IconAcademico,  modulo: 'Gestión académica'  },
     { label: 'Sedes',               path: '/admin/centros-educativos', Icono: IconAcademico                        },
     { label: 'Facultades',          path: '/admin/facultades', Icono: IconAcademico                                },
     { label: 'Carreras',            path: '/admin/carreras',   Icono: IconCarreras                                 },
@@ -66,15 +67,14 @@ const MENU_POR_ROL = {
     { label: 'Asignación docente',  path: '/admin/asignacion-docente', Icono: IconAsignacion                               },
     { label: 'Disponibilidad',      path: '/admin/disponibilidad-docente', Icono: IconDisponib                                },
     { label: 'Generar horario',     path: '/admin/horarios',         Icono: IconHorario                                       },
-    { label: 'Editar horario',      path: '/pendiente',             Icono: IconAcademico,  modulo: 'Edición de horarios'    },
+   // { label: 'Editar horario',      path: '/pendiente',             Icono: IconAcademico,  modulo: 'Edición de horarios'    },
     { label: 'Horarios por carrera',path: '/admin/horarios',         Icono: IconHorario                                       },
     { label: 'Reportes',            path: '/admin/reportes',        Icono: IconReportes                                      },
     { label: 'Notificaciones',      path: '/admin/notificaciones',  Icono: IconBell                                          },
   ],
   docente: [
     { label: 'Dashboard',           path: '/docente/dashboard', Icono: IconDashboard },
-    { label: 'Mi horario',          path: '/pendiente',         Icono: IconMiHorario, modulo: 'Mi horario'         },
-    { label: 'Mi disponibilidad',   path: '/admin/disponibilidad-docente', Icono: IconDisponib                      },
+    { label: 'Mi horario',          path: '/docente/mi-horario', Icono: IconMiHorario },    { label: 'Mi disponibilidad',   path: '/admin/disponibilidad-docente', Icono: IconDisponib                      },
     { label: 'Mis notificaciones',   path: '/admin/notificaciones',          Icono: IconBell                          },
   ],
   estudiante: [
@@ -99,8 +99,51 @@ export default function Layout() {
   const [menuRoles,      setMenuRoles]      = useState(false)
   const [sidebarAbierto, setSidebarAbierto] = useState(true)
   const [cerrando,       setCerrando]       = useState(false)
+  const [noLeidas,       setNoLeidas]       = useState(0)
 
   const meta = rolMeta[perfilActivo] ?? { color: 'var(--color-primary)', inicial: '?', label: perfilActivo }
+
+  useEffect(() => {
+    const perfilesConBadge = ['coordinador', 'docente', 'estudiante']
+
+    if (!perfilesConBadge.includes(perfilActivo)) {
+      setNoLeidas(0)
+      return
+    }
+
+    let activo = true
+
+    async function cargarNoLeidas() {
+      try {
+        const data = await getNoLeidas()
+        if (activo) {
+          setNoLeidas(Number(data.total ?? 0))
+        }
+      } catch {
+        if (activo) setNoLeidas(0)
+      }
+    }
+
+    cargarNoLeidas()
+
+    return () => {
+      activo = false
+    }
+  }, [perfilActivo])
+
+  async function onClickNotificaciones() {
+  const perfilesConBadge = ['coordinador', 'docente', 'estudiante']
+
+  if (!perfilesConBadge.includes(perfilActivo)) return
+
+  try {
+    await leerTodas()
+    setNoLeidas(0)
+  } catch {
+    // Si falla, al menos limpiamos visualmente para no dejar el badge pegado.
+    setNoLeidas(0)
+  }
+}
 
   // ── Cerrar sesión ────────────────────────────────────────────
   async function handleLogout() {
@@ -147,8 +190,38 @@ export default function Layout() {
 
         {/* Navegación dinámica según perfilActivo */}
         <nav style={estilos.nav}>
-          {(MENU_POR_ROL[perfilActivo] ?? []).map((item) => {
+                    {(MENU_POR_ROL[perfilActivo] ?? []).map((item) => {
             const { label, path, Icono, modulo } = item
+
+            const mostrarBadgeNotificaciones =
+              label.toLowerCase().includes('notificaciones') &&
+              noLeidas > 0 &&
+              ['coordinador', 'docente', 'estudiante'].includes(perfilActivo)
+
+            const contenidoItem = (
+              <>
+                <span style={estilos.navIcon}><Icono /></span>
+
+                {sidebarAbierto && (
+                  <span style={estilos.navTexto}>
+                    <span>{label}</span>
+
+                    {mostrarBadgeNotificaciones && (
+                      <span style={estilos.badgeNotificaciones}>
+                        {noLeidas > 99 ? '99+' : noLeidas}
+                      </span>
+                    )}
+                  </span>
+                )}
+
+                {!sidebarAbierto && mostrarBadgeNotificaciones && (
+                  <span style={estilos.badgeNotificacionesColapsado}>
+                    {noLeidas > 99 ? '99+' : noLeidas}
+                  </span>
+                )}
+              </>
+            )
+
             // Ítems pendientes usan Link con state; ítems reales usan NavLink con isActive
             if (modulo) {
               return (
@@ -156,21 +229,26 @@ export default function Layout() {
                   key={label}
                   to={path}
                   state={{ modulo }}
-                  style={estilos.navLink}
+                  style={{ ...estilos.navLink, position: 'relative' }}
                 >
-                  <span style={estilos.navIcon}><Icono /></span>
-                  {sidebarAbierto && <span>{label}</span>}
+                  {contenidoItem}
+                  onClick={mostrarBadgeNotificaciones ? onClickNotificaciones : undefined}
                 </Link>
               )
             }
+
             return (
               <NavLink
                 key={label}
                 to={path}
-                style={({ isActive }) => ({ ...estilos.navLink, ...(isActive ? estilos.navLinkActivo : {}) })}
+                onClick={mostrarBadgeNotificaciones ? onClickNotificaciones : undefined}
+                style={({ isActive }) => ({
+                  ...estilos.navLink,
+                  position: 'relative',
+                  ...(isActive ? estilos.navLinkActivo : {}),
+                })}
               >
-                <span style={estilos.navIcon}><Icono /></span>
-                {sidebarAbierto && <span>{label}</span>}
+                {contenidoItem}
               </NavLink>
             )
           })}
@@ -350,6 +428,49 @@ const estilos = {
     color:      '#fff',
   },
   navIcon: { display: 'flex', flexShrink: 0 },
+
+    navTexto: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    width: '100%',
+    minWidth: 0,
+  },
+
+  badgeNotificaciones: {
+    minWidth: '18px',
+    height: '18px',
+    padding: '0 6px',
+    borderRadius: '999px',
+    background: 'var(--color-error)',
+    color: '#fff',
+    fontSize: '11px',
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+    marginLeft: 'auto',
+  },
+
+  badgeNotificacionesColapsado: {
+    position: 'absolute',
+    top: '4px',
+    right: '4px',
+    minWidth: '16px',
+    height: '16px',
+    padding: '0 4px',
+    borderRadius: '999px',
+    background: 'var(--color-error)',
+    color: '#fff',
+    fontSize: '10px',
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+  },
 
   sidebarPie: { padding: '8px', borderTop: '1px solid rgba(255,255,255,.08)' },
   btnLogout: {

@@ -81,3 +81,12 @@ export async function getPerfilDocente() {
   const response = await api.get('/perfil/docente')
   return response.data
 }
+
+/**
+ * Obtiene el horario del docente autenticado.
+ * Endpoint: GET /docente/horario
+ */
+export async function getMiHorarioDocente() {
+  const response = await api.get('/docente/horario')
+  return response.data
+}

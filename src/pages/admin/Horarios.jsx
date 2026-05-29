@@ -403,48 +403,80 @@ export default function Horarios() {
               </tr>
             </thead>
             <tbody>
-              {horarios.map(h => {
-                const badgeMeta = ESTADO_BADGE[h.estado_horario?.nombre_estado]
-                               ?? ESTADO_BADGE[h.estado]
-                               ?? { texto: h.estado ?? '—', variante: 'neutral' }
-                const abierto = horarioAbierto === h.id_horario
-                return (
-                  <tr key={h.id_horario} style={{
-                    ...est.tr,
-                    ...(abierto ? { background: 'var(--color-primary-subtle)' } : {}),
-                  }}>
-                    <td style={est.td}>
-                      <div style={est.nombreCarrera}>{h.carrera?.nombre_carrera ?? '—'}</div>
-                      {h.carrera?.codigo_carrera && (
-                        <code style={est.codigoCarrera}>{h.carrera.codigo_carrera}</code>
-                      )}
-                    </td>
-                    <td style={est.td}>
-                      <div>{h.periodo_academico?.nombre_periodo ?? '—'}</div>
-                      {h.periodo_academico?.anio && (
-                        <div style={est.periodoAnio}>{h.periodo_academico.anio}</div>
-                      )}
-                    </td>
-                    <td style={est.td}>
-                      <Badge texto={badgeMeta.texto} variante={badgeMeta.variante} dot />
-                    </td>
-                    <td style={est.td}>
-                      <span style={est.totalDet}>
-                        {h.total_detalles ?? '—'}
-                      </span>
-                    </td>
-                    <td style={{ ...est.td, textAlign: 'right' }}>
-                      <Button
-                        variante={abierto ? 'primary' : 'ghost'}
-                        size="sm"
-                        onClick={() => abrirDetalle(h.id_horario)}
-                      >
-                        {abierto ? '▲ Cerrar' : '▼ Ver detalles'}
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
+{horarios.map(h => {
+  const estadoPlano =
+    h.estado_horario?.nombre_estado ??
+    h.nombre_estado ??
+    h.estado ??
+    null
+
+  const badgeMeta =
+    ESTADO_BADGE[estadoPlano] ??
+    { texto: estadoPlano ?? '—', variante: 'neutral' }
+
+  const nombreCarrera =
+    h.carrera?.nombre_carrera ??
+    h.nombre_carrera ??
+    '—'
+
+  const codigoCarrera =
+    h.carrera?.codigo_carrera ??
+    h.codigo_carrera ??
+    null
+
+  const nombrePeriodo =
+    h.periodo_academico?.nombre_periodo ??
+    h.nombre_periodo ??
+    '—'
+
+  const anioPeriodo =
+    h.periodo_academico?.anio ??
+    h.anio ??
+    null
+
+  const abierto = horarioAbierto === h.id_horario
+
+  return (
+    <tr key={h.id_horario} style={{
+      ...est.tr,
+      ...(abierto ? { background: 'var(--color-primary-subtle)' } : {}),
+    }}>
+      <td style={est.td}>
+        <div style={est.nombreCarrera}>{nombreCarrera}</div>
+        {codigoCarrera && (
+          <code style={est.codigoCarrera}>{codigoCarrera}</code>
+        )}
+      </td>
+
+      <td style={est.td}>
+        <div>{nombrePeriodo}</div>
+        {anioPeriodo && (
+          <div style={est.periodoAnio}>{anioPeriodo}</div>
+        )}
+      </td>
+
+      <td style={est.td}>
+        <Badge texto={badgeMeta.texto} variante={badgeMeta.variante} dot />
+      </td>
+
+      <td style={est.td}>
+        <span style={est.totalDet}>
+          {h.total_detalles ?? 0}
+        </span>
+      </td>
+
+      <td style={{ ...est.td, textAlign: 'right' }}>
+        <Button
+          variante={abierto ? 'primary' : 'ghost'}
+          size="sm"
+          onClick={() => abrirDetalle(h.id_horario)}
+        >
+          {abierto ? '▲ Cerrar' : '▼ Ver detalles'}
+        </Button>
+      </td>
+    </tr>
+  )
+})}
             </tbody>
           </table>
         )}

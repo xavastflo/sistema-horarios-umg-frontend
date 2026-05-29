@@ -89,10 +89,27 @@ export default function Reportes() {
     cargar()
   }, [esAdmin, esCoord, esDocente])
 
-  // Filtrar horarios según carrera seleccionada
-  const horariosFiltrados = selCarrera
-    ? horarios.filter(h => h.carrera?.id_carrera === Number(selCarrera))
-    : horarios
+  // Filtrar horarios según carrera y período seleccionados.
+  // El backend puede devolver relaciones anidadas o campos planos.
+  const horariosFiltrados = horarios.filter(h => {
+    const idCarreraHorario =
+      h.carrera?.id_carrera ??
+      h.id_carrera
+
+    const idPeriodoHorario =
+      h.periodo_academico?.id_periodo_academico ??
+      h.id_periodo_academico
+
+    const coincideCarrera = selCarrera
+      ? Number(idCarreraHorario) === Number(selCarrera)
+      : true
+
+    const coincidePeriodo = selPeriodo
+      ? Number(idPeriodoHorario) === Number(selPeriodo)
+      : true
+
+    return coincideCarrera && coincidePeriodo
+  })
 
   // ── Disparar descarga ──────────────────────────────────────
   async function descargar(key, fn) {
@@ -211,11 +228,48 @@ export default function Reportes() {
                 <label style={est.label}>Horario específico <span style={est.opc}>(opcional en algunos reportes)</span></label>
                 <select value={selHorario} onChange={e => setSelHorario(e.target.value)} style={est.select}>
                   <option value="">— Sin filtrar por horario —</option>
-                  {horariosFiltrados.map(h => (
-                    <option key={h.id_horario} value={h.id_horario}>
-                      #{h.id_horario} — {h.carrera?.nombre_carrera ?? '?'} — {h.estado_horario?.nombre_estado ?? h.estado ?? '?'}
-                    </option>
-                  ))}
+                  {horariosFiltrados.map(h => {
+                    const carreraSeleccionada = carreras.find(
+                      c => Number(c.id_carrera) === Number(selCarrera)
+                    )
+
+                    const periodoSeleccionado = periodos.find(
+                      p => Number(p.id_periodo_academico) === Number(selPeriodo)
+                    )
+
+                    const nombreCarrera =
+                      h.carrera?.nombre_carrera ??
+                      h.nombre_carrera ??
+                      carreraSeleccionada?.nombre_carrera ??
+                      'Carrera'
+
+                    const nombrePeriodo =
+                      h.periodo_academico?.nombre_periodo ??
+                      h.nombre_periodo ??
+                      periodoSeleccionado?.nombre_periodo ??
+                      'Período'
+
+                    const anioPeriodo =
+                      h.periodo_academico?.anio ??
+                      h.anio ??
+                      periodoSeleccionado?.anio ??
+                      null
+
+                    const estado =
+                      h.estado_horario?.nombre_estado ??
+                      h.nombre_estado ??
+                      h.estado ??
+                      'estado'
+
+                    const total =
+                      h.total_detalles ?? 0
+
+                    return (
+                      <option key={h.id_horario} value={h.id_horario}>
+                        #{h.id_horario} — {nombreCarrera} — {nombrePeriodo}{anioPeriodo ? ` ${anioPeriodo}` : ''} — {estado} — {total} clases
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
             )}

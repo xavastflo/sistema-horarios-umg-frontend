@@ -5,13 +5,15 @@ import Button from '../ui/Button'
  * PensumForm
  *
  * Formulario para crear y editar pensums.
- * En edición: id_carrera e id_periodo_academico se muestran como
- * solo lectura — el backend no los acepta en PUT.
+ * En edición: id_carrera se muestra como solo lectura —
+ * el backend no lo acepta en PUT.
+ *
+ * REFACTOR: ya no usa id_periodo_academico.
+ * La vigencia se define por anio_inicio_vigencia / anio_fin_vigencia.
  *
  * Props:
  *   inicial      {object}   Valores iniciales para edición
  *   carreras     {array}    Lista de carreras activas para el select de crear
- *   periodos     {array}    Lista de períodos activos para el select de crear
  *   onGuardar    {function} (datos) => Promise
  *   onCancelar   {function}
  *   errores422   {object}   Mapa campo → [mensajes]
@@ -19,7 +21,6 @@ import Button from '../ui/Button'
 export default function PensumForm({
   inicial    = {},
   carreras   = [],
-  periodos   = [],
   onGuardar,
   onCancelar,
   errores422 = {},
@@ -28,7 +29,8 @@ export default function PensumForm({
 
   const [form, setForm] = useState({
     id_carrera:           inicial.id_carrera           ?? '',
-    id_periodo_academico: inicial.id_periodo_academico ?? '',
+    anio_inicio_vigencia: inicial.anio_inicio_vigencia ?? '',
+    anio_fin_vigencia:    inicial.anio_fin_vigencia    ?? '',
     nombre_pensum:        inicial.nombre_pensum        ?? '',
     codigo_pensum:        inicial.codigo_pensum        ?? '',
     descripcion:          inicial.descripcion          ?? '',
@@ -39,7 +41,8 @@ export default function PensumForm({
   useEffect(() => {
     setForm({
       id_carrera:           inicial.id_carrera           ?? '',
-      id_periodo_academico: inicial.id_periodo_academico ?? '',
+      anio_inicio_vigencia: inicial.anio_inicio_vigencia ?? '',
+      anio_fin_vigencia:    inicial.anio_fin_vigencia    ?? '',
       nombre_pensum:        inicial.nombre_pensum        ?? '',
       codigo_pensum:        inicial.codigo_pensum        ?? '',
       descripcion:          inicial.descripcion          ?? '',
@@ -58,17 +61,20 @@ export default function PensumForm({
 
     let payload
     if (esEdicion) {
-      // PUT solo acepta estos campos — no enviar id_carrera ni id_periodo_academico
+      // PUT solo acepta estos campos — no enviar id_carrera
       payload = {
-        nombre_pensum: form.nombre_pensum.trim(),
-        codigo_pensum: form.codigo_pensum.trim().toUpperCase(),
-        estado:        form.estado,
+        nombre_pensum:        form.nombre_pensum.trim(),
+        codigo_pensum:        form.codigo_pensum.trim().toUpperCase(),
+        estado:               form.estado,
+        anio_inicio_vigencia: form.anio_inicio_vigencia ? Number(form.anio_inicio_vigencia) : null,
+        anio_fin_vigencia:    form.anio_fin_vigencia    ? Number(form.anio_fin_vigencia)    : null,
         ...(form.descripcion.trim() ? { descripcion: form.descripcion.trim() } : { descripcion: null }),
       }
     } else {
       payload = {
         id_carrera:           Number(form.id_carrera),
-        id_periodo_academico: Number(form.id_periodo_academico),
+        anio_inicio_vigencia: Number(form.anio_inicio_vigencia),
+        anio_fin_vigencia:    form.anio_fin_vigencia ? Number(form.anio_fin_vigencia) : null,
         nombre_pensum:        form.nombre_pensum.trim(),
         codigo_pensum:        form.codigo_pensum.trim().toUpperCase(),
         ...(form.descripcion.trim() ? { descripcion: form.descripcion.trim() } : {}),
@@ -106,29 +112,29 @@ export default function PensumForm({
         />
       )}
 
-      {/* Período — solo en creación */}
-      {!esEdicion ? (
-        <Campo id="id_periodo_academico" label="Período académico" req errores422={errores422}>
-          <select
-            id="id_periodo_academico" name="id_periodo_academico"
-            value={form.id_periodo_academico} onChange={onChange}
-            disabled={guardando}
-            style={{ ...es.input, ...(errores422.id_periodo_academico ? es.inputErr : {}) }}
-          >
-            <option value="">— Selecciona un período —</option>
-            {periodos.map(p => (
-              <option key={p.id_periodo_academico} value={p.id_periodo_academico}>
-                {p.nombre_periodo}{p.anio ? ` (${p.anio})` : ''} — {p.estado ?? ''}{p.es_vigente ? ' ★' : ''}
-              </option>
-            ))}
-          </select>
-        </Campo>
-      ) : (
-        <CampoLectura
-          label="Período académico"
-          valor={inicial.periodo_academico?.nombre_periodo ?? `ID ${inicial.id_periodo_academico}`}
+      {/* Período — eliminado. Vigencia reemplaza esa relación. */}
+
+      {/* Año inicio de vigencia */}
+      <Campo id="anio_inicio_vigencia" label="Año de inicio de vigencia" req errores422={errores422}>
+        <input
+          id="anio_inicio_vigencia" name="anio_inicio_vigencia" type="number"
+          min={2000} max={2100} value={form.anio_inicio_vigencia} onChange={onChange}
+          placeholder="Ej: 2014"
+          disabled={guardando}
+          style={{ ...es.input, ...(errores422.anio_inicio_vigencia ? es.inputErr : {}) }}
         />
-      )}
+      </Campo>
+
+      {/* Año fin de vigencia */}
+      <Campo id="anio_fin_vigencia" label="Año de fin de vigencia" errores422={errores422}>
+        <input
+          id="anio_fin_vigencia" name="anio_fin_vigencia" type="number"
+          min={2000} max={2100} value={form.anio_fin_vigencia} onChange={onChange}
+          placeholder="Dejar vacío si sigue vigente"
+          disabled={guardando}
+          style={{ ...es.input, ...(errores422.anio_fin_vigencia ? es.inputErr : {}) }}
+        />
+      </Campo>
 
       {/* Nombre */}
       <Campo id="nombre_pensum" label="Nombre del pensum" req errores422={errores422}>

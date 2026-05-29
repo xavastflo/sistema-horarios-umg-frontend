@@ -30,6 +30,7 @@ import Reportes              from './pages/admin/Reportes'
 import Notificaciones        from './pages/admin/Notificaciones'
 import PerfilUsuario         from './pages/perfil/PerfilUsuario'
 import MisCarreras           from './pages/coordinador/MisCarreras'
+import MiHorario             from './pages/docente/MiHorario'
 
 /**
  * Redirige la raíz "/" al dashboard del perfil activo del usuario.
@@ -243,6 +244,16 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={['docente']}>
                 <DocenteDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Mi Horario docente */}
+          <Route
+            path="docente/mi-horario"
+            element={
+              <ProtectedRoute rolesPermitidos={['docente']}>
+                <MiHorario />
               </ProtectedRoute>
             }
           />

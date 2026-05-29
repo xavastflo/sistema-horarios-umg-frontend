@@ -15,7 +15,6 @@ import {
   eliminarPensum,
 } from '../../api/pensum'
 import { getCarreras }  from '../../api/carreras'
-import { getPeriodos }  from '../../api/periodosAcademicos'
 
 /**
  * Pensum — módulo CRUD de pensums.
@@ -28,30 +27,10 @@ import { getPeriodos }  from '../../api/periodosAcademicos'
  *
  * Catálogos auxiliares (carga al montar):
  *   GET    /carreras?estado=activo
- *   GET    /periodos-academicos?estado=activo
+ *
+ * REFACTOR: ya no usa id_periodo_academico.
+ * La vigencia se define por anio_inicio_vigencia / anio_fin_vigencia.
  */
-/**
- * Convierte el nombre_periodo largo en una etiqueta corta para la tabla.
- * 'Semestres Impares 2026' → { texto: 'Impares · 2026', variante: 'info' }
- * 'Semestres Pares 2026'   → { texto: 'Pares · 2026',   variante: 'warning' }
- */
-function etiquetaPeriodo(nombrePeriodo) {
-  if (!nombrePeriodo) return { texto: '—', variante: 'neutral' }
-  const match = nombrePeriodo.match(/^(Semestres (Impares|Pares))\s+(\d{4})$/)
-  if (match) {
-    const tipo = match[2]  // 'Impares' | 'Pares'
-    const anio = match[3]
-    return {
-      texto:    `${tipo} · ${anio}`,
-      variante: tipo === 'Impares' ? 'info' : 'warning',
-    }
-  }
-  // Fallback para otros formatos: recortar a 22 chars
-  return {
-    texto:    nombrePeriodo.length > 22 ? nombrePeriodo.slice(0, 20) + '…' : nombrePeriodo,
-    variante: 'neutral',
-  }
-}
 
 export default function Pensum() {
   // ── Datos principales ──────────────────────────────────────
@@ -61,14 +40,12 @@ export default function Pensum() {
 
   // ── Catálogos para los selects del form ────────────────────
   const [carreras,      setCarreras]      = useState([])
-  const [periodos,      setPeriodos]      = useState([])
   const [cargandoCat,   setCargandoCat]   = useState(false)
   const [errorCatalog,  setErrorCatalog]  = useState(null)
 
   // ── Filtros ────────────────────────────────────────────────
   const [filtroEstado,  setFiltroEstado]  = useState('')
   const [filtroCarrera, setFiltroCarrera] = useState('')
-  const [filtroPeriodo, setFiltroPeriodo] = useState('')
 
   // ── Formulario ─────────────────────────────────────────────
   const [mostrarForm,    setMostrarForm]    = useState(false)
@@ -88,9 +65,8 @@ export default function Pensum() {
     setError(null)
     try {
       const params = {}
-      if (filtroEstado)  params.estado               = filtroEstado
-      if (filtroCarrera) params.id_carrera            = filtroCarrera
-      if (filtroPeriodo) params.id_periodo_academico  = filtroPeriodo
+      if (filtroEstado)  params.estado    = filtroEstado
+      if (filtroCarrera) params.id_carrera = filtroCarrera
       setPensums(await getPensums(params))
     } catch (err) {
       setError(
@@ -101,7 +77,7 @@ export default function Pensum() {
     } finally {
       setCargando(false)
     }
-  }, [filtroEstado, filtroCarrera, filtroPeriodo])
+  }, [filtroEstado, filtroCarrera])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -111,14 +87,10 @@ export default function Pensum() {
       setCargandoCat(true)
       setErrorCatalog(null)
       try {
-        const [dataCarreras, dataPeriodos] = await Promise.all([
-          getCarreras({ estado: 'activo' }),
-          getPeriodos(),  // sin filtro de estado: períodos en planificacion también deben aparecer
-        ])
+        const dataCarreras = await getCarreras({ estado: 'activo' })
         setCarreras(dataCarreras)
-        setPeriodos(dataPeriodos)
       } catch {
-        setErrorCatalog('Error al cargar carreras o períodos. Recarga la página.')
+        setErrorCatalog('Error al cargar carreras. Recarga la página.')
       } finally {
         setCargandoCat(false)
       }
@@ -181,7 +153,7 @@ export default function Pensum() {
     <div className="fade-in">
       <PageHeader
         titulo="Pensums"
-        descripcion="Gestiona los pensums académicos por carrera y período."
+        descripcion="Gestiona los pensums académicos por carrera y vigencia."
         accion={
           <Button variante="primary" onClick={abrirCrear} disabled={cargandoCat}>
             + Nuevo pensum
@@ -210,13 +182,12 @@ export default function Pensum() {
             </h2>
           </div>
           {errorCatalog && <div style={est.alertaWarn}>{errorCatalog}</div>}
-          {cargandoCat  && <LoadingState texto="Cargando carreras y períodos…" alto="60px" />}
+          {cargandoCat  && <LoadingState texto="Cargando carreras…" alto="60px" />}
           {errorForm    && <div style={est.alertaError} role="alert">{errorForm}</div>}
           {!cargandoCat && (
             <PensumForm
               inicial={editando ?? {}}
               carreras={carreras}
-              periodos={periodos}
               onGuardar={onGuardar}
               onCancelar={cerrarForm}
               errores422={errores422}
@@ -236,14 +207,6 @@ export default function Pensum() {
           <option value="">Todas las carreras</option>
           {carreras.map(c => (
             <option key={c.id_carrera} value={c.id_carrera}>{c.nombre_carrera}</option>
-          ))}
-        </select>
-        <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)} style={est.select}>
-          <option value="">Todos los períodos</option>
-          {periodos.map(p => (
-            <option key={p.id_periodo_academico} value={p.id_periodo_academico}>
-              {p.nombre_periodo}{p.anio ? ` (${p.anio})` : ''} — {p.estado ?? ''}{p.es_vigente ? ' ★' : ''}
-            </option>
           ))}
         </select>
       </div>
@@ -273,7 +236,7 @@ export default function Pensum() {
                   <th style={est.th}>Pensum</th>
                   <th style={est.th}>Código</th>
                   <th style={est.th}>Carrera</th>
-                  <th style={est.th}>Período</th>
+                  <th style={est.th}>Vigencia</th>
                   <th style={est.th}>Estado</th>
                   <th style={{ ...est.th, textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -292,10 +255,13 @@ export default function Pensum() {
                       {p.carrera?.nombre_carrera ?? '—'}
                     </td>
                     <td style={est.td}>
-                      {(() => {
-                        const ep = etiquetaPeriodo(p.periodo_academico?.nombre_periodo)
-                        return <Badge texto={ep.texto} variante={ep.variante} />
-                      })()}
+                      <span style={est.vigencia}>
+                        {p.anio_inicio_vigencia ?? '—'}
+                        {' → '}
+                        {p.anio_fin_vigencia
+                          ? p.anio_fin_vigencia
+                          : <em style={{ color: 'var(--color-success)', fontStyle: 'normal' }}>vigente</em>}
+                      </span>
                     </td>
                     <td style={est.td}>
                       <Badge
@@ -381,6 +347,7 @@ const est = {
     fontSize: '12px', fontFamily: 'var(--font-mono)', fontWeight: 600,
   },
   periodo:  { fontWeight: 500 },
+  vigencia: { fontVariantNumeric: 'tabular-nums', fontSize: '13px', color: 'var(--color-text-secondary)' },
   anio:     { fontSize: '12px', color: 'var(--color-text-muted)' },
   acciones: { display: 'flex', gap: '6px', justifyContent: 'flex-end' },
 }
