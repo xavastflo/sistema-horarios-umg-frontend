@@ -12,7 +12,7 @@ import api from './axios'
  *   PATCH  /docentes/{id}/prioridad      cambio rápido de prioridad
  *
  * Catálogo auxiliar (solo para el form de crear):
- *   GET    /usuarios?id_rol=3            usuarios con rol docente (id_rol=3)
+ *   GET    /usuarios?id_rol=3&sin_docente=1   usuarios con rol docente sin perfil docente aún
  */
 
 /**
@@ -63,17 +63,19 @@ export async function cambiarPrioridad(id, prioridad) {
 }
 
 /**
- * Lista usuarios con rol docente (id_rol=3) para el selector del form.
+ * Lista usuarios con rol docente (id_rol=3) que aún NO tienen perfil docente.
+ * sin_docente=1 → backend aplica whereDoesntHave('docente'), excluyendo
+ * cualquier id_usuario ya registrado en la tabla docente (activo o inactivo).
  * Solo accesible por administrador — coordinador no puede listar usuarios.
  */
 export async function getUsuariosDocentes() {
-  const response = await api.get('/usuarios', { params: { id_rol: 3 } })
+  const response = await api.get('/usuarios', { params: { id_rol: 3, sin_docente: 1 } })
   return response.data
 }
 
 /**
  * Obtiene el perfil docente del usuario autenticado.
- * Solo accesible por rol:docente.
+ * Usado por DisponibilidadDocente.jsx.
  */
 export async function getPerfilDocente() {
   const response = await api.get('/perfil/docente')

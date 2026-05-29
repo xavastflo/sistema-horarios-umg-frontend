@@ -47,7 +47,10 @@ export default function SeccionForm({
     setForm({ id_carrera: '', id_carrera_jornada: '', id_curso: '', id_periodo_academico: '', numero_seccion: '' })
   }, []) // eslint-disable-line
 
-  // Al cambiar carrera: cargar jornadas Y cursos del pensum de esa carrera
+  // Al cambiar carrera O período: cargar jornadas y cursos filtrados por período.
+  // Sin carrera: limpiar todo.
+  // Con carrera pero sin período: cargar jornadas, pero NO mostrar cursos todavía.
+  // Con carrera + período: cargar cursos filtrados por ciclosPermitidos() del período.
   useEffect(() => {
     if (!form.id_carrera) {
       setJornadasCarrera([])
@@ -61,12 +64,25 @@ export default function SeccionForm({
     ])
       .then(([rCarrera, rPensums]) => {
         setJornadasCarrera(rCarrera.data.jornadas_activas ?? [])
+
+        // Sin período seleccionado: no mostrar cursos (evita mezclar todos los ciclos)
+        if (!form.id_periodo_academico) {
+          setCursosFiltrados([])
+          return
+        }
+
         // Extraer IDs únicos de cursos de todos los pensums de la carrera
-        const pensums  = Array.isArray(rPensums.data) ? rPensums.data : []
+        const pensums   = Array.isArray(rPensums.data) ? rPensums.data : []
         const idPensums = pensums.map(p => p.id_pensum)
-        if (idPensums.length === 0) { setCursosFiltrados(cursos); return }
-        // Cargar cursos de todos los pensums en paralelo
-        Promise.all(idPensums.map(id => api.get(`/pensums/${id}/cursos`)))
+        if (idPensums.length === 0) { setCursosFiltrados([]); return }
+
+        // Cargar cursos de todos los pensums en paralelo,
+        // pasando id_periodo_academico para que el backend filtre por ciclosPermitidos()
+        Promise.all(idPensums.map(id =>
+          api.get(`/pensums/${id}/cursos`, {
+            params: { id_periodo_academico: form.id_periodo_academico },
+          })
+        ))
           .then(responses => {
             const idsCursos = new Set(
               responses.flatMap(r =>
@@ -78,25 +94,28 @@ export default function SeccionForm({
             setCursosFiltrados(
               idsCursos.size > 0
                 ? cursos.filter(c => idsCursos.has(c.id_curso))
-                : cursos
+                : []
             )
           })
-          .catch(() => setCursosFiltrados(cursos))
+          .catch(() => setCursosFiltrados([]))
       })
-      .catch(() => { setJornadasCarrera([]); setCursosFiltrados(cursos) })
+      .catch(() => { setJornadasCarrera([]); setCursosFiltrados([]) })
       .finally(() => setCargandoJorn(false))
-  }, [form.id_carrera]) // eslint-disable-line
+  }, [form.id_carrera, form.id_periodo_academico]) // eslint-disable-line
 
   function onChange(e) {
     const { name, value } = e.target
-    // numero_seccion: solo letras A-Z (sin números ni especiales), forzar mayúsculas
+    // numero_seccion: solo letras, forzar mayúsculas
     const valorFinal = name === 'numero_seccion'
       ? value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').toUpperCase()
       : value
     setForm(f => ({
       ...f,
       [name]: valorFinal,
-      ...(name === 'id_carrera' ? { id_carrera_jornada: '' } : {}),
+      // Si cambia la carrera, resetear jornada y curso
+      ...(name === 'id_carrera' ? { id_carrera_jornada: '', id_curso: '' } : {}),
+      // Si cambia el período, resetear curso (los ciclos disponibles cambian)
+      ...(name === 'id_periodo_academico' ? { id_curso: '' } : {}),
     }))
   }
 
@@ -171,37 +190,7 @@ export default function SeccionForm({
         </span>
       </div>
 
-      {/* ── 3. Curso ───────────────────────────────────────── */}
-      <div style={es.campo}>
-        <label style={es.label} htmlFor="id_curso">
-          Curso <span style={es.req}>*</span>
-        </label>
-        <select
-          id="id_curso" name="id_curso"
-          value={form.id_curso} onChange={onChange}
-          disabled={guardando || !form.id_carrera}
-          style={{ ...es.input, ...(errores422.id_curso ? es.inputErr : {}) }}
-        >
-          <option value="">
-            {!form.id_carrera ? '— Selecciona primero una carrera —' : '— Selecciona un curso —'}
-          </option>
-          {[...cursosFiltrados].sort((a, b) => {
-              const nA = parseInt(a.codigo_curso, 10)
-              const nB = parseInt(b.codigo_curso, 10)
-              if (!isNaN(nA) && !isNaN(nB)) return nA - nB
-              return a.codigo_curso.localeCompare(b.codigo_curso)
-            }).map(c => (
-            <option key={c.id_curso} value={c.id_curso}>
-              [{c.codigo_curso}] {c.nombre_curso}
-            </option>
-          ))}
-        </select>
-        {errores422.id_curso && (
-          <span style={es.errorMsg}>{errores422.id_curso[0]}</span>
-        )}
-      </div>
-
-      {/* ── 4. Período ─────────────────────────────────────── */}
+      {/* ── 3. Período ─────────────────────────────────────── */}
       <div style={es.campo}>
         <label style={es.label} htmlFor="id_periodo_academico">
           Período académico <span style={es.req}>*</span>
@@ -221,6 +210,40 @@ export default function SeccionForm({
         </select>
         {errores422.id_periodo_academico && (
           <span style={es.errorMsg}>{errores422.id_periodo_academico[0]}</span>
+        )}
+      </div>
+
+      {/* ── 4. Curso ───────────────────────────────────────── */}
+      <div style={es.campo}>
+        <label style={es.label} htmlFor="id_curso">
+          Curso <span style={es.req}>*</span>
+        </label>
+        <select
+          id="id_curso" name="id_curso"
+          value={form.id_curso} onChange={onChange}
+          disabled={guardando || !form.id_carrera || !form.id_periodo_academico}
+          style={{ ...es.input, ...(errores422.id_curso ? es.inputErr : {}) }}
+        >
+          <option value="">
+            {!form.id_carrera
+              ? '— Selecciona primero una carrera —'
+              : !form.id_periodo_academico
+                ? '— Selecciona primero un período académico —'
+                : '— Selecciona un curso —'}
+          </option>
+          {[...cursosFiltrados].sort((a, b) => {
+              const nA = parseInt(a.codigo_curso, 10)
+              const nB = parseInt(b.codigo_curso, 10)
+              if (!isNaN(nA) && !isNaN(nB)) return nA - nB
+              return a.codigo_curso.localeCompare(b.codigo_curso)
+            }).map(c => (
+            <option key={c.id_curso} value={c.id_curso}>
+              [{c.codigo_curso}] {c.nombre_curso}
+            </option>
+          ))}
+        </select>
+        {errores422.id_curso && (
+          <span style={es.errorMsg}>{errores422.id_curso[0]}</span>
         )}
       </div>
 
@@ -245,7 +268,7 @@ export default function SeccionForm({
           <span style={es.errorMsg}>{errores422.numero_seccion[0]}</span>
         )}
         <span style={es.hint}>
-          Solo letras (A, B, C…). Se convierte automáticamente a mayúsculas.
+          Solo letras (A, B, C…). Se convierte a mayúsculas automáticamente.
           Único por jornada + curso + período. Puede repetirse en otras jornadas.
         </span>
       </div>

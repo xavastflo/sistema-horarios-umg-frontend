@@ -6,13 +6,18 @@ import Button from '../ui/Button'
  *
  * Formulario de crear/editar períodos académicos (semestres UMG).
  *
- * Terminología actualizada:
- *   - "Tipo de semestre"      → Semestres Impares (Ene–Jun) | Semestres Pares (Jul–Nov)
- *   - "Semestre correspondiente" → número de avance 1 a 12
+ * Terminología:
+ *   - "Tipo de semestre" → Semestres Impares (Ene–Jun) | Semestres Pares (Jul–Nov)
  *
- * Lógica de ciclos del pensum (informativa, aplicada en el algoritmo de generación):
+ * numero_periodo se calcula automáticamente:
+ *   Semestres Impares → numero_periodo = 1
+ *   Semestres Pares   → numero_periodo = 2
+ * El usuario NO lo elige manualmente. Esto garantiza coherencia con
+ * el UNIQUE(anio, numero_periodo) en la BD.
+ *
+ * Lógica de ciclos del pensum (pertenece a pensum_curso.ciclo_semestre, no aquí):
  *   Semestres Impares  → activa ciclos IMPARES  (1, 3, 5, 7, 9, 11)
- *   Semestres Pares → activa ciclos PARES    (2, 4, 6, 8, 10, 12)
+ *   Semestres Pares    → activa ciclos PARES    (2, 4, 6, 8, 10, 12)
  *
  * Payload enviado al backend:
  *   { nombre_base, numero_periodo, fecha_inicio, fecha_fin,
@@ -21,9 +26,15 @@ import Button from '../ui/Button'
  */
 
 const TIPOS_SEMESTRE = [
-  { value: 'Semestres Impares',  label: 'Semestres Impares',  rango: 'Enero – Junio',    ciclos: 'impares (1, 3, 5…)' },
-  { value: 'Semestres Pares', label: 'Semestres Pares', rango: 'Julio – Noviembre', ciclos: 'pares (2, 4, 6…)' },
+  { value: 'Semestres Impares', label: 'Semestres Impares', rango: 'Enero – Junio',    ciclos: 'impares (1, 3, 5…)' },
+  { value: 'Semestres Pares',   label: 'Semestres Pares',   rango: 'Julio – Noviembre', ciclos: 'pares (2, 4, 6…)' },
 ]
+
+/** numero_periodo calculado automáticamente — nunca elegido por el usuario */
+const NUMERO_PERIODO_MAP = {
+  'Semestres Impares': 1,
+  'Semestres Pares':   2,
+}
 
 function extraerNombreBase(nombreCompleto) {
   if (!nombreCompleto) return ''
@@ -41,7 +52,6 @@ export default function PeriodoAcademicoForm({
 
   const [form, setForm] = useState({
     nombre_base:                   extraerNombreBase(inicial.nombre_periodo),
-    numero_periodo:                inicial.numero_periodo                ?? '',
     fecha_inicio:                  inicial.fecha_inicio?.slice(0, 10)   ?? '',
     fecha_fin:                     inicial.fecha_fin?.slice(0, 10)      ?? '',
     fecha_limite_edicion_horarios: inicial.fecha_limite_edicion_horarios?.slice(0, 10) ?? '',
@@ -53,7 +63,6 @@ export default function PeriodoAcademicoForm({
   useEffect(() => {
     setForm({
       nombre_base:                   extraerNombreBase(inicial.nombre_periodo),
-      numero_periodo:                inicial.numero_periodo                ?? '',
       fecha_inicio:                  inicial.fecha_inicio?.slice(0, 10)   ?? '',
       fecha_fin:                     inicial.fecha_fin?.slice(0, 10)      ?? '',
       fecha_limite_edicion_horarios: inicial.fecha_limite_edicion_horarios?.slice(0, 10) ?? '',
@@ -81,6 +90,10 @@ export default function PeriodoAcademicoForm({
   async function onSubmit(e) {
     e.preventDefault()
 
+    // numero_periodo calculado automáticamente desde nombre_base
+    // Semestres Impares → 1 | Semestres Pares → 2
+    const numeroPeriodo = NUMERO_PERIODO_MAP[form.nombre_base] ?? null
+
     // Validación cruzada de fechas — comparación directa de strings YYYY-MM-DD.
     // No usa new Date() para evitar el bug UTC: en zonas UTC-6 el string '2025-06-01'
     // se interpreta como medianoche UTC y retrocede al día anterior, causando que
@@ -94,7 +107,7 @@ export default function PeriodoAcademicoForm({
     setGuardando(true)
     await onGuardar({
       nombre_base:    form.nombre_base,
-      numero_periodo: Number(form.numero_periodo),
+      numero_periodo: numeroPeriodo,
       fecha_inicio:   form.fecha_inicio,
       fecha_fin:      form.fecha_fin,
       estado:         form.estado,
@@ -159,19 +172,21 @@ export default function PeriodoAcademicoForm({
         )}
       </div>
 
-      {/* ── Semestre correspondiente (1–12) ─────────────────── */}
-      {campo('numero_periodo', 'Semestre correspondiente', true,
-        <select
-          id="numero_periodo" name="numero_periodo"
-          value={form.numero_periodo} onChange={onChange} disabled={guardando}
-          style={{ ...es.input, ...(errores422.numero_periodo ? es.inputErr : {}) }}
-        >
-          <option value="">— Selecciona el semestre —</option>
-          {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
-            <option key={n} value={n}>Semestre {n}</option>
-          ))}
-        </select>,
-        'Nivel de avance académico de la carrera (1 a 12 semestres).'
+      {/* ── numero_periodo se calcula automáticamente ──────── */}
+      {/* Ya no hay select de "Semestre correspondiente" 1–12.   */}
+      {/* El valor se deriva del tipo: Impares → 1 | Pares → 2.  */}
+      {form.nombre_base && (
+        <div style={es.numeroBadge}>
+          <span style={es.numeroBadgeLabel}>Período académico:</span>
+          <span style={es.numeroBadgeValor}>
+            {NUMERO_PERIODO_MAP[form.nombre_base] === 1
+              ? 'P1 — Semestres Impares'
+              : 'P2 — Semestres Pares'}
+          </span>
+          <span style={es.numeroBadgeHint}>
+            (calculado automáticamente)
+          </span>
+        </div>
       )}
 
       {/* ── Fechas ──────────────────────────────────────────── */}
@@ -239,6 +254,15 @@ const es = {
     borderRadius: 'var(--radius-md)', padding: '8px 12px',
     fontSize: '13px', color: 'var(--color-error)', fontWeight: 500,
   },
+  numeroBadge: {
+    display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+    padding: '8px 12px', background: 'var(--color-primary-subtle)',
+    border: '1px solid var(--color-primary)', borderRadius: 'var(--radius-md)',
+    marginTop: '-4px',
+  },
+  numeroBadgeLabel: { fontSize: '12px', color: 'var(--color-text-secondary)', flexShrink: 0 },
+  numeroBadgeValor: { fontSize: '13px', fontWeight: 700, color: 'var(--color-primary)' },
+  numeroBadgeHint:  { fontSize: '11.5px', color: 'var(--color-text-muted)', fontStyle: 'italic' },
   form:   { display: 'flex', flexDirection: 'column', gap: '16px' },
   fila2:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
   campo:  { display: 'flex', flexDirection: 'column', gap: '5px' },
