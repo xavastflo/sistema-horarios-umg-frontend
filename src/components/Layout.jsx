@@ -33,7 +33,7 @@ const IconPublicado  = () => <svg width="18" height="18" fill="none" stroke="cur
  */
 const MENU_POR_ROL = {
   administrador: [
-    { label: 'Dashboard',           path: '/admin/dashboard',  Icono: IconDashboard  },
+    { label: 'Resumen',           path: '/admin/dashboard',  Icono: IconDashboard  },
    // { label: 'Gestión académica',   path: '/pendiente',        Icono: IconAcademico,  modulo: 'Gestión académica'  },
     { label: 'Sedes',               path: '/admin/centros-educativos', Icono: IconAcademico                        },
     { label: 'Facultades',          path: '/admin/facultades', Icono: IconAcademico                                },
@@ -54,7 +54,7 @@ const MENU_POR_ROL = {
     { label: 'Notificaciones',      path: '/admin/notificaciones', Icono: IconBell                                 },
   ],
   coordinador: [
-    { label: 'Dashboard',           path: '/coordinador/dashboard', Icono: IconDashboard  },
+    { label: 'Resumen',           path: '/coordinador/dashboard', Icono: IconDashboard  },
     { label: 'Mis carreras',        path: '/coordinador/mis-carreras', Icono: IconCarreras                                                  },
     { label: 'Jornadas por carrera',path: '/admin/carrera-jornadas', Icono: IconDisponib                                    },
     { label: 'Bloques horarios',    path: '/admin/bloques-horarios', Icono: IconHorario                                     },
@@ -73,7 +73,7 @@ const MENU_POR_ROL = {
     { label: 'Notificaciones',      path: '/admin/notificaciones',  Icono: IconBell                                          },
   ],
   docente: [
-    { label: 'Dashboard',           path: '/docente/dashboard', Icono: IconDashboard },
+    { label: 'Resumen',           path: '/docente/dashboard', Icono: IconDashboard },
     { label: 'Mi horario',          path: '/docente/mi-horario', Icono: IconMiHorario },    { label: 'Mi disponibilidad',   path: '/admin/disponibilidad-docente', Icono: IconDisponib                      },
     { label: 'Mis notificaciones',   path: '/admin/notificaciones',          Icono: IconBell                          },
   ],
