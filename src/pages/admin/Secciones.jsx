@@ -12,6 +12,31 @@ import { getCursos }    from '../../api/cursos'
 import { getCarreras }  from '../../api/carreras'
 import { getPeriodos }  from '../../api/periodosAcademicos'
 
+function obtenerNombreDocente(docente) {
+  if (!docente) return null
+
+  if (docente.nombre_docente) {
+    return docente.nombre_docente
+  }
+
+  if (docente.usuario?.nombre_completo) {
+    return docente.usuario.nombre_completo
+  }
+
+  const nombres = docente.usuario?.nombres
+  const apellidos = docente.usuario?.apellidos
+
+  if (nombres || apellidos) {
+    return `${nombres ?? ''} ${apellidos ?? ''}`.trim()
+  }
+
+  return null
+}
+
+function obtenerCodigoDocente(docente) {
+  return docente?.codigo_docente ?? null
+}
+
 /**
  * Secciones — módulo de gestión de secciones académicas.
  *
@@ -276,6 +301,8 @@ export default function Secciones() {
                 {secciones.map(s => {
                   // snake_case: periodo_academico, asignacion_activa
                   const docente = s.asignacion_activa?.docente
+                  const nombreDocente = obtenerNombreDocente(docente)
+                  const codigoDocente = obtenerCodigoDocente(docente)
                   const enAccion = eliminando === s.id_seccion
                   return (
                     <tr key={s.id_seccion} style={est.tr}>
@@ -310,10 +337,10 @@ export default function Secciones() {
                         {docente
                           ? <div>
                               <div style={est.docenteNombre}>
-                                {docente.usuario?.nombre_completo ?? '—'}
+                                {nombreDocente ?? '—'}
                               </div>
-                              {docente.codigo_docente && (
-                                <code style={est.cursoCodigo}>{docente.codigo_docente}</code>
+                              {codigoDocente && (
+                                <code style={est.cursoCodigo}>{codigoDocente}</code>
                               )}
                             </div>
                           : <span style={est.sinDocente}>Sin asignar</span>

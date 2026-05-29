@@ -12,6 +12,31 @@ import { getPeriodos }                      from '../../api/periodosAcademicos'
 import { getDocentes }                      from '../../api/docentes'
 import { asignarDocente, quitarDocente }    from '../../api/asignacionDocente'
 
+function obtenerNombreDocente(docente) {
+  if (!docente) return null
+
+  if (docente.nombre_docente) {
+    return docente.nombre_docente
+  }
+
+  if (docente.usuario?.nombre_completo) {
+    return docente.usuario.nombre_completo
+  }
+
+  const nombres = docente.usuario?.nombres
+  const apellidos = docente.usuario?.apellidos
+
+  if (nombres || apellidos) {
+    return `${nombres ?? ''} ${apellidos ?? ''}`.trim()
+  }
+
+  return null
+}
+
+function obtenerCodigoDocente(docente) {
+  return docente?.codigo_docente ?? null
+}
+
 /**
  * AsignacionDocente — Paso 14
  *
@@ -142,7 +167,7 @@ export default function AsignacionDocente() {
 
   // ── Quitar ─────────────────────────────────────────────────
   async function onQuitar(seccion) {
-    const docNombre = seccion.asignacion_activa?.docente?.usuario?.nombre_completo ?? 'docente'
+    const docNombre = obtenerNombreDocente(seccion.asignacion_activa?.docente) ?? 'docente'
     if (!window.confirm(
       `¿Quitar a "${docNombre}" de la sección ${seccion.numero_seccion} — ${seccion.curso?.nombre_curso}?`
     )) return
@@ -227,10 +252,12 @@ export default function AsignacionDocente() {
               </thead>
               <tbody>
                 {secciones.map(s => {
-                  const docente    = s.asignacion_activa?.docente
-                  const tieneDoc   = Boolean(docente)
-                  const estaAsign  = seccionAsignando === s.id_seccion
-                  const enAccion   = asignando === s.id_seccion || quitando === s.id_seccion
+                  const docente       = s.asignacion_activa?.docente
+                  const nombreDocente = obtenerNombreDocente(docente)
+                  const codigoDocente = obtenerCodigoDocente(docente)
+                  const tieneDoc      = Boolean(docente)
+                  const estaAsign     = seccionAsignando === s.id_seccion
+                  const enAccion      = asignando === s.id_seccion || quitando === s.id_seccion
 
                   return (
                     <tr key={s.id_seccion} style={est.tr}>
@@ -262,10 +289,10 @@ export default function AsignacionDocente() {
                         {tieneDoc ? (
                           <div>
                             <div style={est.docenteNombre}>
-                              {docente.usuario?.nombre_completo ?? '—'}
+                              {nombreDocente ?? '—'}
                             </div>
-                            {docente.codigo_docente && (
-                              <code style={est.cursoCodigo}>{docente.codigo_docente}</code>
+                            {codigoDocente && (
+                              <code style={est.cursoCodigo}>{codigoDocente}</code>
                             )}
                           </div>
                         ) : (
@@ -308,7 +335,8 @@ export default function AsignacionDocente() {
                               <option value="">— Selecciona docente —</option>
                               {docentes.map(d => (
                                 <option key={d.id_docente} value={d.id_docente}>
-                                  {d.usuario?.nombre_completo ?? d.codigo_docente}
+                                  {obtenerNombreDocente(d) ?? d.codigo_docente ?? 'Docente'}
+                                  {d.codigo_docente ? ` — ${d.codigo_docente}` : ''}
                                   {d.etiqueta_prioridad ? ` (${d.etiqueta_prioridad})` : ''}
                                 </option>
                               ))}
