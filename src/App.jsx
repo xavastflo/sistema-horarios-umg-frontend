@@ -29,6 +29,7 @@ import Usuarios              from './pages/admin/Usuarios'
 import Reportes              from './pages/admin/Reportes'
 import Notificaciones        from './pages/admin/Notificaciones'
 import PerfilUsuario         from './pages/perfil/PerfilUsuario'
+import MisCarreras           from './pages/coordinador/MisCarreras'
 
 /**
  * Redirige la raíz "/" al dashboard del perfil activo del usuario.
@@ -222,6 +223,16 @@ export default function App() {
             element={
               <ProtectedRoute rolesPermitidos={['coordinador']}>
                 <CoordinadorDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Módulos de coordinador */}
+          <Route
+            path="coordinador/mis-carreras"
+            element={
+              <ProtectedRoute rolesPermitidos={['coordinador']}>
+                <MisCarreras />
               </ProtectedRoute>
             }
           />

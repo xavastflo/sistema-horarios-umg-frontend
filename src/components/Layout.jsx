@@ -54,7 +54,7 @@ const MENU_POR_ROL = {
   ],
   coordinador: [
     { label: 'Dashboard',           path: '/coordinador/dashboard', Icono: IconDashboard  },
-    { label: 'Mis carreras',        path: '/pendiente',             Icono: IconCarreras,   modulo: 'Mis carreras'           },
+    { label: 'Mis carreras',        path: '/coordinador/mis-carreras', Icono: IconCarreras                                                  },
     { label: 'Jornadas por carrera',path: '/admin/carrera-jornadas', Icono: IconDisponib                                    },
     { label: 'Bloques horarios',    path: '/admin/bloques-horarios', Icono: IconHorario                                     },
     { label: 'Períodos académicos', path: '/admin/periodos-academicos', Icono: IconDisponib                                  },
